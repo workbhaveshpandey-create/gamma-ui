@@ -30,30 +30,56 @@ Before you begin, ensure you have the following installed:
 
 ## 🤖 Model Setup
 
-This application is configured to use **`gemma3:4b`** by default. You need to pull this model (or any other you prefer) using Ollama.
+This application defaults to **`gemma3:12b`** for a balance of performance and intelligence. You must pull this model (or another one) to use the app.
 
-1.  **Start Ollama** (if it's not already running).
-2.  Open your terminal and run:
+### 1. Install & Start Ollama
+Download and install Ollama from [ollama.com](https://ollama.com). Once installed, ensure it is running:
+- **Mac/Linux**: Run `ollama serve` in a terminal or check your menu bar.
+- **Windows**: Ensure the Ollama tray icon is visible.
 
-    ```bash
-    ollama pull gemma3:4b
-    ```
+### 2. Pull a Model
+Open your terminal and run the following command to download the recommended model:
 
-    *You can also pull other models like `llama3`, `mistral`, or `qwen` and select them in the app settings.*
+```bash
+ollama pull gemma3:12b
+```
+
+*Required space: ~8GB*
+
+**Other popular models you can try:**
+- `ollama pull llama3` (8GB) - Great all-rounder.
+- `ollama pull mistral` (4GB) - Fast and efficient.
+- `ollama pull qwen2.5:14b` (9GB) - Excellent reasoning.
+
+### 3. Verify Installed Models
+To see which models you have ready to use:
+
+```bash
+ollama list
+```
 
 ## 🏃‍♂️ How to Run
 
-1.  Start the development server (runs both the frontend and backend):
+1.  **Start the Application**:
+    Runs both the frontend and backend concurrently.
 
     ```bash
     npm run dev
     ```
 
-2.  Open your browser and navigate to:
+2.  **Open in Browser**:
+    Navigate to: `http://localhost:5173`
 
-    ```
-    http://localhost:5173
-    ```
+## ❓ Troubleshooting
+
+**"Ollama connection refused" / "Failed to fetch models"**
+- Ensure Ollama is running. Run `ollama serve` in a dedicated terminal window.
+- Check if Ollama is listening on the default port `11434`.
+
+**"Model not found"**
+- Run `ollama list` to see exact model names.
+- Ensure the model selected in the app settings matches one in your list.
+- If the app defaults to a model you don't have, go to settings and select one you do have.
 
 ## 📦 Push to GitHub
 
@@ -63,19 +89,12 @@ To push this project to your own GitHub repository:
 2.  Run the following commands in your project folder:
 
     ```bash
-    git init
-    git add .
-    git commit -m "Initial commit"
-    git branch -M main
+    git remote remove origin
     git remote add origin https://github.com/YOUR_USERNAME/YOUR_REPO_NAME.git
     git push -u origin main
     ```
 
 ## 🔧 Configuration
 
--   **Port**: The API server runs on port `3001` and the frontend on `5173` by default.
--   **Ollama URL**: The app expects Ollama to be running at `http://localhost:11434`.
-
-## 📜 License
-
-MIT License
+-   **Frontend Port**: `5173` (Vite default)
+-   **Backend Proxy**: Requests to `/ollama/api` are proxied to `http://localhost:11434`.
