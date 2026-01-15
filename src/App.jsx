@@ -1,19 +1,18 @@
 import { useState, useEffect, useCallback } from 'react';
 import Sidebar from './components/Sidebar';
 import ChatWindow from './components/ChatWindow';
-import SettingsPanel from './components/SettingsPanel';
 import { getAllChats, getGroupedChats, deleteChat } from './services/chatStorage';
+import { warmModel } from './services/ollamaService';
 
 function App() {
   const [currentChatId, setCurrentChatId] = useState(null);
-  const [isSettingsOpen, setSettingsOpen] = useState(false);
   const [chatHistory, setChatHistory] = useState({});
 
   const [isSidebarOpen, setSidebarOpen] = useState(true);
   const [isConnected, setIsConnected] = useState(false);
 
-  const [appSettings, setAppSettings] = useState({
-    model: 'gemma3:4b',
+  const defaultSettings = {
+    model: 'gemma3:12b',
     temperature: 0.7,
     top_p: 0.9,
     top_k: 40,
@@ -21,7 +20,22 @@ function App() {
     repeat_penalty: 1.1,
     seed: 42,
     systemPrompt: 'You are a helpful AI assistant.',
+    userName: 'User', // Persisted user name
+  };
+
+  const [appSettings, setAppSettings] = useState(() => {
+    try {
+      const saved = localStorage.getItem('gamma_app_settings');
+      return saved ? { ...defaultSettings, ...JSON.parse(saved) } : defaultSettings;
+    } catch {
+      return defaultSettings;
+    }
   });
+
+  // Persist settings to localStorage whenever they change
+  useEffect(() => {
+    localStorage.setItem('gamma_app_settings', JSON.stringify(appSettings));
+  }, [appSettings]);
 
   // Load chat history
   const refreshChatHistory = useCallback(() => {
@@ -30,6 +44,8 @@ function App() {
 
   useEffect(() => {
     refreshChatHistory();
+    // Pre-load model on app start for faster first response
+    warmModel();
   }, [refreshChatHistory]);
 
   // Check backend connection
@@ -74,7 +90,6 @@ function App() {
         onSelectChat={handleSelectChat}
         onNewChat={handleNewChat}
         onDeleteChat={handleDeleteChat}
-        onOpenSettings={() => setSettingsOpen(true)}
         isOpen={isSidebarOpen}
         onToggle={() => setSidebarOpen(!isSidebarOpen)}
         isConnected={isConnected}
@@ -92,13 +107,6 @@ function App() {
           onChatUpdated={refreshChatHistory}
         />
       </main>
-
-      <SettingsPanel
-        isOpen={isSettingsOpen}
-        onClose={() => setSettingsOpen(false)}
-        initialSettings={appSettings}
-        onSave={setAppSettings}
-      />
     </div>
   );
 }

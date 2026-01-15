@@ -52,6 +52,18 @@ const SettingsPanel = ({ isOpen, onClose, onSave, initialSettings }) => {
                         </div>
 
                         <div className="space-y-2">
+                            <label className="text-sm font-medium text-text-secondary">Your Name</label>
+                            <input
+                                type="text"
+                                value={settings.userName || ''}
+                                onChange={(e) => handleChange('userName', e.target.value)}
+                                placeholder="Enter your name"
+                                className="w-full bg-surface border border-subtle rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-text-secondary transition-colors"
+                            />
+                            <p className="text-xs text-text-tertiary">Used for personalized greetings</p>
+                        </div>
+
+                        <div className="space-y-2">
                             <label className="text-sm font-medium text-text-secondary">System Prompt</label>
                             <textarea
                                 value={settings.systemPrompt}

@@ -180,49 +180,4 @@ export const getRecentContext = (currentChatId, limit = 5) => {
     }
 };
 
-const MEMORY_KEY = 'gamma_user_memory';
 
-/**
- * Get all saved user memories
- * @returns {Array}
- */
-export const getUserAllMemory = () => {
-    try {
-        const data = localStorage.getItem(MEMORY_KEY);
-        return data ? JSON.parse(data) : [];
-    } catch (e) {
-        return [];
-    }
-};
-
-/**
- * Save a new fact about the user
- * @param {string} fact 
- */
-export const saveUserMemory = (fact) => {
-    try {
-        const memories = getUserAllMemory();
-        // Avoid duplicates
-        if (memories.some(m => m.content === fact)) return;
-
-        memories.push({
-            id: Date.now(),
-            content: fact,
-            createdAt: new Date().toISOString()
-        });
-        localStorage.setItem(MEMORY_KEY, JSON.stringify(memories));
-        console.log('Saved user memory:', fact);
-    } catch (e) {
-        console.error('Error saving user memory:', e);
-    }
-};
-
-/**
- * Get formatted memory block for system prompt
- */
-export const getUserMemoryContext = () => {
-    const memories = getUserAllMemory();
-    if (memories.length === 0) return '';
-    return "USER MEMORY (Personal facts about the user you should remember across chats):\n" +
-        memories.map(m => `- ${m.content}`).join('\n') + "\n\n";
-};

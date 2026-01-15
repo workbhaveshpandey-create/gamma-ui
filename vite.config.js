@@ -18,4 +18,10 @@ export default defineConfig({
       }
     },
   },
+  optimizeDeps: {
+    exclude: ['@xenova/transformers']
+  },
+  build: {
+    target: 'esnext'
+  }
 })

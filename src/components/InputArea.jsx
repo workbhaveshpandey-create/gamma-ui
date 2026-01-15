@@ -1,13 +1,57 @@
 import { useState, useRef, useEffect } from 'react';
-import { Send, Image, Mic, Paperclip, ArrowUp, Camera, X, StopCircle } from 'lucide-react';
+import { Send, Image, Mic, Paperclip, ArrowUp, Camera, X, StopCircle, Loader2 } from 'lucide-react';
 import { extractPdfText } from '../services/pdfService';
+import { transcribeAudio } from '../services/whisperService';
 import CameraModal from './CameraModal';
+
+/**
+ * Compress and convert image to JPEG for better compatibility
+ * @param {string} dataUrl - Original image data URL
+ * @param {number} maxWidth - Maximum width (default 1920)
+ * @param {number} quality - JPEG quality 0-1 (default 0.85)
+ * @returns {Promise<string>} Compressed image data URL
+ */
+const compressImage = (dataUrl, maxWidth = 1920, quality = 0.85) => {
+    return new Promise((resolve, reject) => {
+        const img = new window.Image();
+        img.crossOrigin = 'Anonymous';
+        img.onload = () => {
+            try {
+                // Calculate new dimensions
+                let width = img.width;
+                let height = img.height;
+
+                if (width > maxWidth) {
+                    height = Math.round((height * maxWidth) / width);
+                    width = maxWidth;
+                }
+
+                // Create canvas and draw
+                const canvas = document.createElement('canvas');
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, height);
+
+                // Convert to JPEG (better compression) or PNG for transparency
+                const outputUrl = canvas.toDataURL('image/jpeg', quality);
+                resolve(outputUrl);
+            } catch (e) {
+                reject(e);
+            }
+        };
+        img.onerror = () => reject(new Error('Failed to load image for compression'));
+        img.src = dataUrl;
+    });
+};
 
 const InputArea = ({ onSendMessage, disabled }) => {
     const [input, setInput] = useState('');
     const [isCameraOpen, setCameraOpen] = useState(false);
-    const [attachment, setAttachment] = useState(null); // { type: 'image'|'file', url: string, name: string }
+    const [attachment, setAttachment] = useState(null);
     const [isRecording, setIsRecording] = useState(false);
+    const [isTranscribing, setIsTranscribing] = useState(false);
+    const [transcriptionProgress, setTranscriptionProgress] = useState('');
 
     const textareaRef = useRef(null);
     const fileInputRef = useRef(null);
@@ -18,6 +62,7 @@ const InputArea = ({ onSendMessage, disabled }) => {
         e.preventDefault();
         if ((!input.trim() && !attachment) || disabled) return;
 
+        // Auto-search logic is now handled in ChatWindow.jsx
         onSendMessage(input, attachment);
 
         // Reset
@@ -48,14 +93,30 @@ const InputArea = ({ onSendMessage, disabled }) => {
         if (!file) return;
 
         if (file.type.startsWith('image/')) {
-            // Convert image to base64
+            // Convert image to base64 with optional compression
             const reader = new FileReader();
-            reader.onload = () => {
-                const base64 = reader.result.split(',')[1]; // Remove data:image/...;base64, prefix
+            reader.onload = async () => {
+                let finalDataUrl = reader.result;
+
+                // Compress large images (> 2MB) or convert unsupported formats
+                const needsProcessing = file.size > 2 * 1024 * 1024 ||
+                    !['image/jpeg', 'image/png'].includes(file.type);
+
+                if (needsProcessing) {
+                    try {
+                        console.log(`Processing image: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)}MB, ${file.type})`);
+                        finalDataUrl = await compressImage(reader.result, 1920, 0.85);
+                        console.log('Image processed successfully');
+                    } catch (err) {
+                        console.error('Image processing failed, using original:', err);
+                    }
+                }
+
+                const base64 = finalDataUrl.split(',')[1];
                 setAttachment({
                     type: 'image',
                     base64: base64,
-                    url: reader.result, // Keep full URL for preview
+                    url: finalDataUrl,
                     name: file.name
                 });
             };
@@ -83,6 +144,40 @@ const InputArea = ({ onSendMessage, disabled }) => {
                 });
             };
             reader.readAsText(file);
+        } else if (file.type.startsWith('audio/')) {
+            // Audio file - transcribe using Whisper
+            setIsTranscribing(true);
+            setTranscriptionProgress('Loading Whisper model...');
+
+            try {
+                const transcription = await transcribeAudio(file, (progress, fileName) => {
+                    setTranscriptionProgress(`Downloading model: ${progress}%`);
+                });
+
+                setAttachment({
+                    type: 'audio',
+                    name: file.name,
+                    content: transcription,
+                    transcribed: true
+                });
+                setTranscriptionProgress('');
+            } catch (error) {
+                console.error('Transcription failed:', error);
+                // Fallback to showing audio player
+                const reader = new FileReader();
+                reader.onload = () => {
+                    setAttachment({
+                        type: 'audio',
+                        url: reader.result,
+                        name: file.name,
+                        content: `[Audio file: ${file.name}] - Transcription failed: ${error.message}`,
+                        transcribed: false
+                    });
+                };
+                reader.readAsDataURL(file);
+            } finally {
+                setIsTranscribing(false);
+            }
         } else {
             // For other files, just show name
             setAttachment({
@@ -208,17 +303,39 @@ const InputArea = ({ onSendMessage, disabled }) => {
                 type="file"
                 ref={fileInputRef}
                 onChange={handleFileSelect}
+                accept="image/*,.heic,.heif,.webp,.avif,.bmp,.tiff,.gif,.pdf,.txt,.md,.json,.js,.jsx,.py,.ts,.tsx,.html,.css,audio/*,.mp3,.wav,.m4a,.ogg,.flac,.aac"
                 className="hidden"
             />
 
             <form onSubmit={handleSubmit} className="relative flex flex-col w-full p-3 bg-surface border border-subtle rounded-[26px] shadow-sm transition-colors focus-within:border-zinc-600 focus-within:bg-[#252627]">
 
+                {/* Transcription Loading State */}
+                {isTranscribing && (
+                    <div className="px-3 pt-2 pb-1">
+                        <div className="flex items-center gap-3 p-3 bg-purple-500/10 border border-purple-500/30 rounded-lg">
+                            <Loader2 size={18} className="text-purple-400 animate-spin" />
+                            <div className="flex flex-col">
+                                <span className="text-sm text-purple-300">Transcribing audio...</span>
+                                <span className="text-xs text-purple-400">{transcriptionProgress}</span>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 {/* Attachment Preview */}
-                {attachment && (
+                {attachment && !isTranscribing && (
                     <div className="px-3 pt-2 pb-1">
                         <div className="relative inline-block group">
                             {attachment.type === 'image' ? (
                                 <img src={attachment.url} alt="preview" className="h-16 w-auto rounded-lg border border-subtle object-cover" />
+                            ) : attachment.type === 'audio' ? (
+                                <div className="h-12 px-3 flex items-center bg-zinc-800 rounded-lg border border-subtle text-xs text-zinc-300">
+                                    <span className="text-purple-400 mr-2">🎵</span>
+                                    <span className="truncate max-w-[200px]">{attachment.name}</span>
+                                    {attachment.transcribed && (
+                                        <span className="ml-2 text-green-500 text-[10px]">✓ Transcribed</span>
+                                    )}
+                                </div>
                             ) : (
                                 <div className="h-12 px-3 flex items-center bg-zinc-800 rounded-lg border border-subtle text-xs text-zinc-300">
                                     <Paperclip size={14} className="mr-2 shrink-0" />

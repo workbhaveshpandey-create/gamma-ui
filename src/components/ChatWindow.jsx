@@ -2,9 +2,21 @@ import { useState, useRef, useEffect } from 'react';
 import InputArea from './InputArea';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { streamChat, generateChatTitle, searchWeb } from '../services/ollamaService';
-import { createChat, getChatById, updateChatMessages, updateChatTitle, getRecentContext, saveUserMemory, getUserMemoryContext } from '../services/chatStorage';
-import { FileText, ChevronDown, ChevronUp } from 'lucide-react';
+import { streamChat, generateChatTitle } from '../services/ollamaService';
+import { createChat, getChatById, updateChatMessages, updateChatTitle, getRecentContext } from '../services/chatStorage';
+import { learnFact, searchKnowledge } from '../services/knowledgeService';
+import { FileText, ChevronDown, ChevronUp, BookOpen, Check, X, GraduationCap } from 'lucide-react';
+
+// File Attachment Card Component - clean display for attached files
+// ... (FileAttachmentCard implementation remains unchanged if it was outside)
+
+// ... FileAttachmentCard code is lines 12-69, I'll keep it via context matching if possible or just use start/end line carefuly.
+// Actually, I can target the top lines 1-10 to fix imports.
+// And target line 75 to fix state.
+// And target the end to fix JSX.
+
+// I'll do this in chunks.
+
 
 // File Attachment Card Component - clean display for attached files
 const FileAttachmentCard = ({ file }) => {
@@ -38,10 +50,10 @@ const FileAttachmentCard = ({ file }) => {
     return (
         <div className="mb-2">
             <div
-                className={`flex items-center gap-2 px-3 py-2 rounded-lg border border-zinc-600/50 bg-zinc-700/50 cursor-pointer hover:bg-zinc-700 transition-colors ${isExpanded ? 'rounded-b-none' : ''}`}
+                className={`flex items - center gap - 2 px - 3 py - 2 rounded - lg border border - zinc - 600 / 50 bg - zinc - 700 / 50 cursor - pointer hover: bg - zinc - 700 transition - colors ${isExpanded ? 'rounded-b-none' : ''} `}
                 onClick={() => file.content && setIsExpanded(!isExpanded)}
             >
-                <div className={`p-1.5 rounded ${getExtensionColor(ext)}`}>
+                <div className={`p - 1.5 rounded ${getExtensionColor(ext)} `}>
                     <FileText size={14} />
                 </div>
                 <span className="text-sm font-medium truncate flex-1">{file.name}</span>
@@ -70,9 +82,12 @@ const FileAttachmentCard = ({ file }) => {
 const ChatWindow = ({ chatId, settings, onChatCreated, onChatUpdated }) => {
     const [messages, setMessages] = useState([]);
     const [isLoading, setIsLoading] = useState(false);
-    const [activeChatId, setActiveChatId] = useState(chatId);
+    const [activeChatId, setActiveChatId] = useState(null); // Renamed from currentChatId to avoid conflict
+    const [correctionModal, setCorrectionModal] = useState({ isOpen: false, question: '', answer: '' });
     const [isFirstMessage, setIsFirstMessage] = useState(true);
+    const [elapsedTime, setElapsedTime] = useState(0);
     const messagesEndRef = useRef(null);
+    const timerRef = useRef(null);
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -116,7 +131,7 @@ const ChatWindow = ({ chatId, settings, onChatCreated, onChatUpdated }) => {
             setActiveChatId(null);
             setIsFirstMessage(true);
         }
-    }, [chatId]);
+    }, [chatId, activeChatId, messages.length]); // Added messages.length to dependencies
 
     // Save messages whenever they change (excluding empty states)
     useEffect(() => {
@@ -124,43 +139,49 @@ const ChatWindow = ({ chatId, settings, onChatCreated, onChatUpdated }) => {
             updateChatMessages(activeChatId, messages);
             onChatUpdated?.();
         }
-    }, [messages, activeChatId, isLoading]);
+    }, [messages, activeChatId, isLoading, onChatUpdated]); // Added onChatUpdated to dependencies
 
-    // Helper to auto-convert images (e.g. webp, gif) to PNG for Ollama support
-    const convertImageToPng = (dataUrl) => {
+    // Helper to convert ANY image to JPEG for Ollama (most compatible format)
+    const convertImageToJpeg = (dataUrl) => {
         return new Promise((resolve, reject) => {
-            const img = new Image();
-            img.crossOrigin = 'Anonymous'; // Check CORS if needed
+            const img = new window.Image();
+            img.crossOrigin = 'Anonymous';
             img.onload = () => {
                 try {
                     const canvas = document.createElement('canvas');
-                    canvas.width = img.width;
-                    canvas.height = img.height;
+                    // Limit size for performance
+                    const maxSize = 1920;
+                    let width = img.width;
+                    let height = img.height;
+
+                    if (width > maxSize || height > maxSize) {
+                        if (width > height) {
+                            height = Math.round((height * maxSize) / width);
+                            width = maxSize;
+                        } else {
+                            width = Math.round((width * maxSize) / height);
+                            height = maxSize;
+                        }
+                    }
+
+                    canvas.width = width;
+                    canvas.height = height;
                     const ctx = canvas.getContext('2d');
-                    ctx.drawImage(img, 0, 0);
-                    const pngDataUrl = canvas.toDataURL('image/png');
-                    resolve(pngDataUrl);
+                    // White background for transparency
+                    ctx.fillStyle = '#FFFFFF';
+                    ctx.fillRect(0, 0, width, height);
+                    ctx.drawImage(img, 0, 0, width, height);
+
+                    // Convert to JPEG (most compatible with Ollama)
+                    const jpegDataUrl = canvas.toDataURL('image/jpeg', 0.9);
+                    resolve(jpegDataUrl);
                 } catch (e) {
                     reject(e);
                 }
             };
-            img.onerror = (err) => reject(new Error('Image conversion load failed'));
+            img.onerror = () => reject(new Error('Image load failed'));
             img.src = dataUrl;
         });
-    };
-
-    // Helper to get fresh time context
-    const getTimeContext = () => {
-        const now = new Date();
-        return `CURRENT DATE & TIME: ${now.toLocaleString('en-US', {
-            weekday: 'long',
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-            hour12: true
-        })}`;
     };
 
     const handleSendMessage = async (text, attachment) => {
@@ -170,61 +191,43 @@ const ChatWindow = ({ chatId, settings, onChatCreated, onChatUpdated }) => {
         let displayContent = text; // What to show in the UI
         let aiContent = text; // What to send to the AI
         let imageBase64 = null;
-        let fileAttachment = null; // For displaying file card in UI
+        let knowledgeContext = "";
+        let cleanText = text;
 
+        // Manual Force Search Command
+        let forceSearch = false;
+        if (text.startsWith('/web ') || text.startsWith('/search ')) {
+            forceSearch = true;
+            cleanText = text.replace(/^\/(web|search)\s+/, '');
+            displayContent = cleanText;
+            aiContent = cleanText;
+        }
+
+        // Process attachments FIRST (this is fast)
+        let fileAttachment = null;
         if (attachment) {
             if (attachment.type === 'image' && attachment.url) {
-                // For images, we'll display a placeholder in chat but send base64 to Ollama
                 displayContent = text || '';
-                aiContent = text ? `[Image attached]\n\n${text}` : '[Image attached]';
-
+                aiContent = text ? `[Image attached]\n\n${text} ` : '[Image attached]';
                 try {
-                    const parts = attachment.url.split(',');
-                    if (parts.length >= 2) {
-                        // Check MIME type
-                        const mime = parts[0].match(/:(.*?);/)?.[1];
-                        let finalBase64 = parts[1];
-
-                        // Auto-convert to PNG if not supported (Ollama supports png/jpeg)
-                        if (mime && !['image/jpeg', 'image/png'].includes(mime)) {
-                            console.log(`Auto-converting ${mime} to PNG for Ollama...`);
-                            try {
-                                const pngDataUrl = await convertImageToPng(attachment.url);
-                                finalBase64 = pngDataUrl.split(',')[1];
-                            } catch (convErr) {
-                                console.error("Image conversion failed:", convErr);
-                                // Fallback to original, hoping standard strip works
-                            }
-                        }
-
-                        // Aggressively remove all whitespace (newlines, spaces) which can break decoding
-                        imageBase64 = finalBase64.replace(/\s/g, '');
-                        console.log('Processed Image Base64 (first 20 chars):', imageBase64.substring(0, 20));
-                    } else {
-                        console.warn('Invalid Data URL format, falling back to .base64 prop');
-                        imageBase64 = attachment.base64 ? attachment.base64.replace(/\s/g, '') : null;
-                    }
+                    console.log('Converting image to JPEG for Ollama...');
+                    const jpegDataUrl = await convertImageToJpeg(attachment.url);
+                    imageBase64 = jpegDataUrl.split(',')[1].replace(/\s/g, '');
+                    console.log('Image converted successfully, base64 length:', imageBase64.length);
                 } catch (err) {
                     console.error('Error processing image attachment:', err);
+                    if (attachment.base64) {
+                        imageBase64 = attachment.base64.replace(/\s/g, '');
+                    }
                 }
             } else if (attachment.type === 'text' && attachment.content) {
-                // For text files - show clean card in UI, send full content to AI
                 displayContent = text || '';
-                aiContent = `Here is the content of file "${attachment.name}":\n\n\`\`\`\n${attachment.content}\n\`\`\`\n\n${text}`;
-                fileAttachment = {
-                    name: attachment.name,
-                    content: attachment.content,
-                    type: 'text'
-                };
+                aiContent = `Here is the content of file "${attachment.name}": \n\n\`\`\`\n${attachment.content}\n\`\`\`\n\n${text}`;
+                fileAttachment = { name: attachment.name, content: attachment.content, type: 'text' };
             } else if (attachment.content) {
-                // For other files
                 displayContent = text || '';
                 aiContent = `Here is the content of file "${attachment.name}":\n\n${attachment.content}\n\n${text}`;
-                fileAttachment = {
-                    name: attachment.name,
-                    content: attachment.content,
-                    type: 'file'
-                };
+                fileAttachment = { name: attachment.name, content: attachment.content, type: 'file' };
             }
         }
 
@@ -233,15 +236,15 @@ const ChatWindow = ({ chatId, settings, onChatCreated, onChatUpdated }) => {
             id: Date.now(),
             role: 'user',
             content: displayContent,
-            aiContent: aiContent, // Full content for AI
+            aiContent: aiContent,
             image: attachment?.type === 'image' ? attachment.url : null,
-            file: fileAttachment // File attachment info for display
+            file: fileAttachment
         };
 
         // Create a new chat if this is the first message
         let currentChatId = activeChatId;
         let isNewChat = false;
-        const originalMessage = text; // Store for title generation
+        const originalMessage = text;
 
         if (!currentChatId) {
             const newChat = createChat(text || attachment?.name || 'New Chat');
@@ -251,40 +254,118 @@ const ChatWindow = ({ chatId, settings, onChatCreated, onChatUpdated }) => {
             isNewChat = true;
         }
 
+        // === SHOW USER MESSAGE IMMEDIATELY ===
         setMessages(prev => [...prev, newUserMsg]);
 
         // Create placeholder for bot response
         const botMsgId = Date.now() + 1;
-        setMessages(prev => [...prev, { id: botMsgId, role: 'assistant', content: '' }]);
+        setMessages(prev => [...prev, { id: botMsgId, role: 'assistant', content: '', status: 'thinking' }]);
         setIsLoading(true);
+        setElapsedTime(0);
+
+        // Start elapsed time counter
+        const startTime = Date.now();
+        timerRef.current = setInterval(() => {
+            setElapsedTime(Math.floor((Date.now() - startTime) / 1000));
+        }, 1000);
+
+        // Auto-Detect if Web Search is needed
+        const searchPatterns = /\b(latest\s+\w+|current\s+(news|price|events|weather)|price\s+of|who\s+won|news\s+(about|on)|weather\s+(in|for)|stock\s+price|search\s+the\s+web|look\s+up)\b/i;
+        const shouldSearch = forceSearch || searchPatterns.test(cleanText);
 
         try {
+            // === WEB SEARCH (runs AFTER user sees their message) ===
+            if (shouldSearch && cleanText.trim().length > 2) {
+                console.log('🌍 Deep Web Search triggered...');
 
-            // Enhance system prompt with recent context and user memory
+                // Update bot placeholder to show "Searching..."
+                setMessages(prev => prev.map(msg =>
+                    msg.id === botMsgId ? { ...msg, status: 'searching' } : msg
+                ));
+
+                const searchRes = await fetch('/api/web-search', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ query: cleanText })
+                });
+                const searchData = await searchRes.json();
+
+                if (searchData.results && searchData.results.length > 0) {
+                    console.log(`🌍 Found ${searchData.results.length} sources`);
+                    knowledgeContext = `\n\n[LIVE WEB RESEARCH from ${searchData.results.length} SOURCES]:\n` +
+                        searchData.results.map((r, i) =>
+                            `SOURCE ${i + 1} [${r.title}] (${r.url}):\n${r.content}\n`
+                        ).join("\n\n") +
+                        `\nINSTRUCTIONS:
+                        - Compare facts from these sources.
+                        - If sources disagree, mention the discrepancy.
+                        - Answer the user's question using ONLY this verified data.
+                        - Cite the source number [1], [2] etc. when stating facts.`;
+                }
+            }
+            // Local Knowledge Base (fast, no status change needed)
+            else if (cleanText.trim().length > 5) {
+                const facts = await searchKnowledge(cleanText);
+                if (facts && facts.length > 0) {
+                    console.log('📚 Found knowledge:', facts.length);
+                    knowledgeContext = "\n\n[RELEVANT RECALLED KNOWLEDGE]:\n" +
+                        facts.map(f => `* User previously taught: "${f.question}" -> "${f.answer}"`).join("\n") +
+                        "\n(Use this knowledge to answer if relevant)";
+                }
+            }
+        } catch (e) {
+            console.warn('Context lookup failed', e);
+        }
+
+        // Reset status to thinking before LLM call
+        setMessages(prev => prev.map(msg =>
+            msg.id === botMsgId ? { ...msg, status: 'thinking' } : msg
+        ));
+
+        try {
+            // Enhance system prompt with recent context only
             const recentContext = getRecentContext(activeChatId);
-            const userMemory = getUserMemoryContext();
-            const timeContext = getTimeContext();
 
+
+            // Enterprise System Prompt Configuration
             const baseSystemPrompt = settings.systemPrompt || "You are a helpful AI assistant.";
-            const toolInstructions =
-                "\n\nTOOL USE:\n" +
-                "1. If the user asks about current events/news/prices/weather (anything that changes often) or explicitly asks for 'current' information, output ONLY: [SEARCH: <query>]. Example: [SEARCH: current bitcoin price]\n" +
-                "2. If (AND ONLY IF) the user explicitly asks you to remember something (e.g. 'Remember my name is...', 'Note that I like...'), output: [MEMORY: <fact>]. Example: [MEMORY: User's name is John].\n" +
-                "   - Do NOT use [MEMORY:...] for general conversation, inferred facts, or image descriptions.\n" +
-                "   - Do NOT save memory automatically without a clear request.\n" +
-                "IMPORTANT: After using [MEMORY:...], you MUST continue generating a response to the user. Do not stop.\n\n" +
-                "CRITICAL INSTRUCTION: You have been provided with the CURRENT DATE & TIME in the system messages. You MUST use that specific date as 'today'. Do NOT use your training data cutoff date.";
+            const currentDateTime = new Date().toLocaleString('en-IN', {
+                dateStyle: 'full',
+                timeStyle: 'short'
+            });
+            const userName = settings.userName || 'User';
+
+            const enterpriseInstructions =
+                "\nYou are Kreo, a friendly and intelligent AI assistant.\n\n" +
+                "PERSONALITY:\n" +
+                "• Be warm, conversational, and personable\n" +
+                "• Vary your responses - never repeat the same phrases\n" +
+                "• For casual chat (greetings, how are you, etc.) - be friendly and natural like a helpful colleague\n" +
+                "• For technical questions - be precise and professional\n\n" +
+                "CRITICAL THINKING & SELF-CORRECTION:\n" +
+                "• Before answering complex questions, internally verify your logic\n" +
+                "• If a user corrects you, acknowledge it gracefully and update your knowledge for this session\n" +
+                "• Think step-by-step for math or logic problems to avoid errors\n" +
+                "• If you catch yourself making a mistake, correct it immediately in the response\n\n" +
+                "RESPONSE STYLE:\n" +
+                "• Casual chat: Friendly, 1-2 sentences, varied and natural\n" +
+                "• Questions: Clear, helpful, appropriately detailed\n" +
+                "• Technical/Math: Step-by-step with verification (Double Check your work)\n" +
+                "• NEVER be robotic or give one-word answers unless truly appropriate\n\n" +
+                "ACCURACY:\n" +
+                "• Never fabricate facts. Say 'I'm not sure' if uncertain\n" +
+                "• You are offline - no internet access\n\n" +
+                `USER: ${userName} | DATE: ${currentDateTime} (mention only if asked)\n`;
 
             const enhancedSettings = {
                 ...settings,
                 systemPrompt: baseSystemPrompt +
-                    (userMemory ? "\n\n" + userMemory : "") +
-                    (recentContext ? "\n\n" + recentContext : "") +
-                    toolInstructions
+                    enterpriseInstructions +
+                    (knowledgeContext ? knowledgeContext : "") +
+                    (recentContext ? "\n\n" + recentContext : "")
             };
 
             // Build chat history for Ollama API
-            // We inject the time context as a SYSTEM message right before the latest user message to ensure high priority
             const chatHistory = [...messages, newUserMsg].map(msg => {
                 const apiMessage = {
                     role: msg.role === 'bot' ? 'assistant' : msg.role,
@@ -293,110 +374,25 @@ const ChatWindow = ({ chatId, settings, onChatCreated, onChatUpdated }) => {
                 return apiMessage;
             });
 
-            // Insert Time Context as a system message at the end
-            chatHistory.splice(chatHistory.length - 1, 0, {
-                role: 'system',
-                content: `${timeContext}\n(Use this date as the absolute truth for 'today')`
-            });
-
             // CRITICAL: Inject image data if present
             if (imageBase64 && chatHistory.length > 0) {
-                // The last message should be the user's new message (after system injection)
+                // The last message should be the user's new message
                 chatHistory[chatHistory.length - 1].images = [imageBase64];
             }
 
             let fullResponse = "";
-            let searchTriggeredQuery = null;
 
             await streamChat(chatHistory, enhancedSettings, (chunk) => {
                 fullResponse += chunk;
 
-                // Handle MEMORY token (detect and save)
-                // If it's starting but not finished, don't show anything yet
-                if (fullResponse.trimStart().startsWith('[MEMORY:')) {
-                    if (!fullResponse.includes(']')) {
-                        return true; // Buffer until we have the full token
-                    }
-
-                    const memoryMatch = fullResponse.match(/\[MEMORY:(.*?)\]/);
-                    if (memoryMatch) {
-                        const fact = memoryMatch[1].trim();
-                        saveUserMemory(fact);
-                        // We continue so the regex below strips it out
-                    }
-                }
-
-                // Handle SEARCH token
-                if (fullResponse.trimStart().startsWith('[SEARCH:')) {
-                    if (fullResponse.includes(']')) {
-                        const match = fullResponse.match(/\[SEARCH:(.*?)\]/);
-                        if (match) {
-                            let query = match[1].trim();
-                            // Auto-append current year to ensure freshness
-                            const currentYear = new Date().getFullYear();
-                            if (!query.includes(currentYear.toString())) {
-                                query += ` ${currentYear}`;
-                            }
-
-                            searchTriggeredQuery = query;
-                            setMessages(prev => prev.map(msg =>
-                                msg.id === botMsgId
-                                    ? { ...msg, content: `_🔍 Fetching data from web for: "${searchTriggeredQuery}"..._` }
-                                    : msg
-                            ));
-                            return false; // Stop the stream
-                        }
-                    }
-                    return true; // Continue buffering
-                }
-
-                // Update UI, filtering out Memory tokens AND trimming result to avoid empty bubbles from pure whitespace
+                // Direct UI update without token filtering
                 setMessages(prev => prev.map(msg => {
                     if (msg.id === botMsgId) {
-                        // We reconstruct content from fullResponse to ensure clean state
-                        // This handles the case where chunk is just part of the token
-                        const cleanContent = fullResponse.replace(/\[MEMORY:.*?\]/g, '').trimStart();
-                        return { ...msg, content: cleanContent };
+                        return { ...msg, content: fullResponse };
                     }
                     return msg;
                 }));
             });
-
-            // If a search was triggered, perform it and run generation again
-            if (searchTriggeredQuery) {
-                const searchResults = await searchWeb(searchTriggeredQuery);
-
-                // Update UI to show we found something (optional, or just clear it)
-                setMessages(prev => prev.map(msg =>
-                    msg.id === botMsgId
-                        ? { ...msg, content: '' } // Clear the "fetching" message to start fresh
-                        : msg
-                ));
-
-                // Create a new context with search results
-                // We add the search results as a 'system' message for the model's context
-                const newChatHistory = [
-                    ...chatHistory,
-                    {
-                        role: 'system',
-                        content: `[Search Results for "${searchTriggeredQuery}"]:\n${searchResults}\n\nUse the above search results to answer the user's question.`
-                    }
-                ];
-
-                // Turn off search trigger in the next run to avoid loops
-                const finalSettings = {
-                    ...settings,
-                    systemPrompt: baseSystemPrompt + "\n\nUse the provided search results to answer the user."
-                };
-
-                await streamChat(newChatHistory, finalSettings, (chunk) => {
-                    setMessages(prev => prev.map(msg =>
-                        msg.id === botMsgId
-                            ? { ...msg, content: msg.content + chunk }
-                            : msg
-                    ));
-                });
-            }
 
             // Generate smart title for new chats after first message
             if (isNewChat || isFirstMessage) {
@@ -420,6 +416,7 @@ const ChatWindow = ({ chatId, settings, onChatCreated, onChatUpdated }) => {
                     : msg
             ));
         } finally {
+            clearInterval(timerRef.current);
             setIsLoading(false);
         }
     };
@@ -434,7 +431,7 @@ const ChatWindow = ({ chatId, settings, onChatCreated, onChatUpdated }) => {
                 {/* Main Greeting Area */}
                 <div className="w-full max-w-4xl mb-12">
                     <h1 className="text-6xl font-medium tracking-tight mb-2 text-text-primary">
-                        <span className="gemini-text-gradient">Hello, Bhavesh</span>
+                        <span className="gemini-text-gradient">Hello, {settings.userName || 'there'}</span>
                     </h1>
                     <h2 className="text-6xl font-medium tracking-tight text-zinc-700">
                         How can I help you today?
@@ -488,11 +485,8 @@ const ChatWindow = ({ chatId, settings, onChatCreated, onChatUpdated }) => {
                     <ChevronDown size={14} className="text-text-tertiary mt-1" />
                 </div>
 
-                {/* Profile / Actions */}
+                {/* Profile / Actions - empty for now */}
                 <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-zinc-700 flex items-center justify-center text-xs text-white">
-                        BP
-                    </div>
                 </div>
             </div>
 
@@ -522,7 +516,7 @@ const ChatWindow = ({ chatId, settings, onChatCreated, onChatUpdated }) => {
                                         {msg.content}
                                     </div>
                                 ) : (
-                                    <div className="flex gap-4">
+                                    <div className="flex gap-4 group"> {/* Added group for hover effect */}
                                         {/* Bot Icon - Custom Kreo Logo */}
                                         <div className="w-8 h-8 rounded-full bg-black/20 flex-shrink-0 overflow-hidden mt-1">
                                             <img src="/kreo-icon.png" alt="Kreo" className="w-full h-full object-cover" />
@@ -531,18 +525,35 @@ const ChatWindow = ({ chatId, settings, onChatCreated, onChatUpdated }) => {
                                         <div className="flex-1 min-w-0 prose-invert pt-1">
                                             {msg.content ? (
                                                 <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                                                    {/* Clean content before display to hide [MEMORY] or [SEARCH] tokens completely */}
-                                                    {msg.content
-                                                        .replace(/\[MEMORY:.*?\]/g, '')
-                                                        .replace(/\[SEARCH:.*?\]/g, '')
-                                                        .replace(/_🔍 Fetching data.*?_/g, '') // Also hide the search loading text if user wants STRICTLY only answer
-                                                        .trim()
-                                                    }
+                                                    {msg.content}
                                                 </ReactMarkdown>
                                             ) : (
                                                 <div className="flex items-center gap-2 text-text-tertiary text-sm animate-pulse">
-                                                    <div className="w-2 h-2 bg-blue-400 rounded-full"></div>
-                                                    Thinking...
+                                                    <div className={`w-2 h-2 rounded-full ${msg.status === 'searching' ? 'bg-green-400' : 'bg-blue-400'}`}></div>
+                                                    {msg.status === 'searching' ? (
+                                                        <span>🌍 Searching the web...</span>
+                                                    ) : (
+                                                        <span>Thinking...</span>
+                                                    )}
+                                                    {elapsedTime > 0 && <span className="text-xs opacity-70">({elapsedTime}s)</span>}
+                                                </div>
+                                            )}
+
+                                            {/* Action Bar for Bot Messages */}
+                                            {!isLoading && (
+                                                <div className="mt-2 flex opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                                                    <button
+                                                        onClick={() => {
+                                                            // Find the preceding user message
+                                                            const prevMsg = messages[idx - 1];
+                                                            const correctionQ = prevMsg ? prevMsg.content : "What was the question?";
+                                                            setCorrectionModal({ isOpen: true, question: correctionQ, answer: '' });
+                                                        }}
+                                                        className="flex items-center gap-1.5 text-[10px] text-zinc-400 hover:text-purple-400 bg-zinc-800/50 hover:bg-zinc-800 px-2 py-1 rounded transition-colors"
+                                                    >
+                                                        <GraduationCap size={12} />
+                                                        <span>Teach / Correct</span>
+                                                    </button>
                                                 </div>
                                             )}
                                         </div>
@@ -554,6 +565,64 @@ const ChatWindow = ({ chatId, settings, onChatCreated, onChatUpdated }) => {
                     <div ref={messagesEndRef} className="h-4" />
                 </div>
             </div>
+
+            {/* Correction Modal */}
+            {correctionModal.isOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-[2px] p-4">
+                    <div className="bg-[#1a1a1c] border border-white/10 rounded-2xl w-full max-w-lg shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+                        <div className="p-5 border-b border-white/5 flex items-center justify-between">
+                            <h3 className="text-white font-medium flex items-center gap-2">
+                                <GraduationCap className="text-purple-400" size={18} />
+                                Teach Kreo
+                            </h3>
+                            <button onClick={() => setCorrectionModal({ ...correctionModal, isOpen: false })} className="text-zinc-400 hover:text-white">
+                                <X size={18} />
+                            </button>
+                        </div>
+
+                        <div className="p-5 space-y-4">
+                            <div>
+                                <label className="block text-xs text-zinc-400 mb-1.5 uppercase tracking-wider font-semibold">User Question</label>
+                                <div className="bg-zinc-900/50 text-zinc-300 p-3 rounded-lg text-sm border border-white/5">
+                                    {correctionModal.question}
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-xs text-purple-400 mb-1.5 uppercase tracking-wider font-semibold">Correct Answer</label>
+                                <textarea
+                                    value={correctionModal.answer}
+                                    onChange={(e) => setCorrectionModal({ ...correctionModal, answer: e.target.value })}
+                                    className="w-full bg-zinc-900 text-white p-3 rounded-lg text-sm border border-white/10 focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/50 outline-none h-32 resize-none placeholder:text-zinc-600"
+                                    placeholder="Type the correct answer here needed for future reference..."
+                                    autoFocus
+                                />
+                            </div>
+
+                            <div className="pt-2 flex justify-end gap-2">
+                                <button
+                                    onClick={() => setCorrectionModal({ ...correctionModal, isOpen: false })}
+                                    className="px-4 py-2 rounded-lg text-xs font-medium text-zinc-400 hover:bg-white/5 transition-colors"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={async () => {
+                                        if (!correctionModal.answer.trim()) return;
+                                        await learnFact(correctionModal.question, correctionModal.answer);
+                                        setCorrectionModal({ ...correctionModal, isOpen: false });
+                                        // Optional: add a small system message to chat saying "Learned!"
+                                    }}
+                                    className="px-4 py-2 rounded-lg text-xs font-medium bg-purple-600 text-white hover:bg-purple-500 transition-colors flex items-center gap-2"
+                                >
+                                    <Check size={14} />
+                                    Save Rule
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Input Floating Footer */}
             <div className="p-6 pt-2 bg-gradient-to-t from-app via-app to-transparent z-20">
