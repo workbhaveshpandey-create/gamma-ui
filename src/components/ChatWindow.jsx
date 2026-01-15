@@ -82,12 +82,22 @@ const FileAttachmentCard = ({ file }) => {
 const ChatWindow = ({ chatId, settings, onChatCreated, onChatUpdated }) => {
     const [messages, setMessages] = useState([]);
     const [isLoading, setIsLoading] = useState(false);
-    const [activeChatId, setActiveChatId] = useState(null); // Renamed from currentChatId to avoid conflict
+    const [activeChatId, setActiveChatId] = useState(null);
     const [correctionModal, setCorrectionModal] = useState({ isOpen: false, question: '', answer: '' });
     const [isFirstMessage, setIsFirstMessage] = useState(true);
     const [elapsedTime, setElapsedTime] = useState(0);
     const messagesEndRef = useRef(null);
     const timerRef = useRef(null);
+    const abortControllerRef = useRef(null);
+
+    const stopGeneration = () => {
+        if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
+            abortControllerRef.current = null;
+            setIsLoading(false);
+            clearInterval(timerRef.current);
+        }
+    };
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -269,14 +279,45 @@ const ChatWindow = ({ chatId, settings, onChatCreated, onChatUpdated }) => {
             setElapsedTime(Math.floor((Date.now() - startTime) / 1000));
         }, 1000);
 
-        // Auto-Detect if Web Search is needed
-        const searchPatterns = /\b(latest\s+\w+|current\s+(news|price|events|weather)|price\s+of|who\s+won|news\s+(about|on)|weather\s+(in|for)|stock\s+price|search\s+the\s+web|look\s+up)\b/i;
-        const shouldSearch = forceSearch || searchPatterns.test(cleanText);
+        // === FORCE SEARCH for RESEARCH-CRITICAL QUERIES (bypasses conservative router) ===
+        // These patterns indicate queries where hallucination is HIGH RISK - MUST verify
+        const forceSearchPatterns = /\b(Dr\.\s+\w+|Professor\s+\w+|researcher\s+\w+|paper\s+(on|by|titled|called)|study\s+(by|on)|research\s+by|published\s+(in|by)|ethicist|economist\s+\w+|scientist\s+\w+|author\s+of|wrote\s+the\s+paper|2018\s+paper|2019\s+paper|2020\s+paper|2021\s+paper|2022\s+paper|2023\s+paper|2024\s+paper)\b/i;
+
+        // === LLM-BASED ROUTER: Let the model decide if web search is needed ===
+        let shouldSearch = forceSearch; // Manual /web command always triggers
+
+        // Force search for research-critical queries (HIGH HALLUCINATION RISK)
+        if (!shouldSearch && forceSearchPatterns.test(cleanText)) {
+            console.log('🔬 Research-critical query detected - FORCING web search');
+            shouldSearch = true;
+        }
+
+        // AUTO-SKIP ROUTER patterns (Optimization for Speed)
+        // If these are found, we assume NO SEARCH needed and skip the router delay.
+        const skipSearchPatterns = /\b(write|create|code|function|class|debug|fix|explain|summarize|translate|poem|story|joke|email|const|var|let|import|return)\b/i;
+
+        // Only run LLM router if:
+        // 1. Not already forced
+        // 2. Text is long enough (>15 chars)
+        // 3. DOES NOT match skip patterns (coding, creative writing, etc.)
+        if (!shouldSearch && cleanText.trim().length > 15 && !skipSearchPatterns.test(cleanText)) {
+            // Show "Deciding..." briefly
+            setMessages(prev => prev.map(msg =>
+                msg.id === botMsgId ? { ...msg, status: 'routing' } : msg
+            ));
+
+            try {
+                const { shouldSearchWeb } = await import('../services/ollamaService');
+                shouldSearch = await shouldSearchWeb(cleanText, settings.model);
+            } catch (e) {
+                console.warn('Router failed, defaulting to no search:', e);
+            }
+        }
 
         try {
             // === WEB SEARCH (runs AFTER user sees their message) ===
             if (shouldSearch && cleanText.trim().length > 2) {
-                console.log('🌍 Deep Web Search triggered...');
+                console.log('🌍 Deep Web Search triggered by router...');
 
                 // Update bot placeholder to show "Searching..."
                 setMessages(prev => prev.map(msg =>
@@ -290,17 +331,72 @@ const ChatWindow = ({ chatId, settings, onChatCreated, onChatUpdated }) => {
                 });
                 const searchData = await searchRes.json();
 
+                // === RESULT VERIFICATION: Check if exact names appear in results ===
+                // Extract key entities from query (names, paper titles)
+                const namePatterns = cleanText.match(/(?:Dr\.|Professor|Prof\.)\s+([A-Z][a-z]+(?:\s+[A-Z]\.?)?\s+[A-Z][a-z]+)/gi) || [];
+                const paperPattern = cleanText.match(/(?:paper|titled|called)\s+["']?([^"']+?)["']?(?:\s+(?:authored|by|from)|\s*$)/i);
+                const paperTitle = paperPattern ? paperPattern[1].trim() : null;
+
+                // Combine all content from results for verification
+                const allContent = searchData.results?.map(r =>
+                    `${r.title} ${r.snippet} ${r.content}`.toLowerCase()
+                ).join(' ') || '';
+
+                // Check if any key entity is found
+                let entityFound = false;
+                const searchedEntities = [];
+
+                for (const name of namePatterns) {
+                    const cleanName = name.replace(/(?:Dr\.|Professor|Prof\.)\s+/i, '').toLowerCase();
+                    searchedEntities.push(cleanName);
+                    if (allContent.includes(cleanName)) {
+                        entityFound = true;
+                        console.log(`✅ Found entity in results: ${cleanName}`);
+                    }
+                }
+
+                if (paperTitle && paperTitle.length > 10) {
+                    searchedEntities.push(paperTitle.toLowerCase().slice(0, 30));
+                    // Check for partial match (at least 3 consecutive words)
+                    const paperWords = paperTitle.toLowerCase().split(' ').slice(0, 4).join(' ');
+                    if (allContent.includes(paperWords)) {
+                        entityFound = true;
+                        console.log(`✅ Found paper title in results: ${paperTitle}`);
+                    }
+                }
+
                 if (searchData.results && searchData.results.length > 0) {
-                    console.log(`🌍 Found ${searchData.results.length} sources`);
-                    knowledgeContext = `\n\n[LIVE WEB RESEARCH from ${searchData.results.length} SOURCES]:\n` +
-                        searchData.results.map((r, i) =>
-                            `SOURCE ${i + 1} [${r.title}] (${r.url}):\n${r.content}\n`
-                        ).join("\n\n") +
-                        `\nINSTRUCTIONS:
-                        - Compare facts from these sources.
-                        - If sources disagree, mention the discrepancy.
-                        - Answer the user's question using ONLY this verified data.
-                        - Cite the source number [1], [2] etc. when stating facts.`;
+                    console.log(`🌍 Found ${searchData.results.length} sources, entity match: ${entityFound}`);
+
+                    const resultsText = searchData.results.map((r, i) =>
+                        `SOURCE ${i + 1} [${r.title}] (${r.url}):\n${r.content}\n`
+                    ).join("\n\n");
+
+                    if (!entityFound && searchedEntities.length > 0) {
+                        // CRITICAL: Entity NOT found in any result
+                        knowledgeContext = `\n\n[WEB SEARCH VERIFICATION FAILED]
+I searched the web for: ${searchedEntities.join(', ')}
+RESULT: The specific person, paper, or entity was NOT FOUND in any web source.
+
+Web results returned generic/unrelated information:
+${resultsText}
+
+CRITICAL INSTRUCTION: The user asked about "${searchedEntities.join(', ')}" but this EXACT entity does NOT appear in any search result. This likely means:
+1. The person or paper does NOT EXIST
+2. The name is misspelled
+3. It's a fictional/trap question
+
+YOU MUST SAY: "I searched the web but could not find any verified information about [the specific name/paper]. This person or paper may not exist, or the details provided may be inaccurate. I cannot provide information I haven't verified."
+
+DO NOT fabricate an answer based on unrelated search results!`;
+                    } else {
+                        // Entity found or no specific entity to verify - use results normally
+                        knowledgeContext = `\n\n[LIVE WEB RESEARCH from ${searchData.results.length} SOURCES]:\n` +
+                            resultsText +
+                            `\n\nINSTRUCTIONS: Use ONLY the information from these sources. Cite as [1], [2], etc.`;
+                    }
+                } else {
+                    knowledgeContext = `\n\n[WEB SEARCH RETURNED NO RESULTS]\nThe user asked about a specific person or paper, but web search found nothing. Say: "I couldn't find any verified information about this. The person or paper may not exist."`;
                 }
             }
             // Local Knowledge Base (fast, no status change needed)
@@ -342,19 +438,35 @@ const ChatWindow = ({ chatId, settings, onChatCreated, onChatUpdated }) => {
                 "• Vary your responses - never repeat the same phrases\n" +
                 "• For casual chat (greetings, how are you, etc.) - be friendly and natural like a helpful colleague\n" +
                 "• For technical questions - be precise and professional\n\n" +
-                "CRITICAL THINKING & SELF-CORRECTION:\n" +
-                "• Before answering complex questions, internally verify your logic\n" +
-                "• If a user corrects you, acknowledge it gracefully and update your knowledge for this session\n" +
-                "• Think step-by-step for math or logic problems to avoid errors\n" +
-                "• If you catch yourself making a mistake, correct it immediately in the response\n\n" +
-                "RESPONSE STYLE:\n" +
-                "• Casual chat: Friendly, 1-2 sentences, varied and natural\n" +
-                "• Questions: Clear, helpful, appropriately detailed\n" +
-                "• Technical/Math: Step-by-step with verification (Double Check your work)\n" +
-                "• NEVER be robotic or give one-word answers unless truly appropriate\n\n" +
-                "ACCURACY:\n" +
-                "• Never fabricate facts. Say 'I'm not sure' if uncertain\n" +
-                "• You are offline - no internet access\n\n" +
+                "CONTEXT MANAGEMENT:\n" +
+                "• STRICTLY EVALUATE each new query independently if the topic seems different.\n" +
+                "• If the user asks a completely new question (e.g., switches from coding to cooking), DO NOT relate it to the previous conversation.\n" +
+                "• Treat topic changes as a fresh start.\n\n" +
+                "CRITICAL THINKING & REASONING VERIFICATION:\n" +
+                "• Before answering, internally verify your logic\n" +
+                "• For DATE COMPARISONS: Carefully check which year is earlier/later (smaller year = earlier)\n" +
+                "• EXAMPLE: 1945 comes BEFORE 1949. If X was founded in 1945 and Y in 1949, X came FIRST.\n" +
+                "• Double-check your conclusion matches the facts you stated\n" +
+                "• If comparing 'before' vs 'after': verify the chronological order is correct\n" +
+                "• Think step-by-step for math or logic problems\n" +
+                "• If you catch yourself making a mistake, correct it immediately\n\n" +
+                "FACT VERIFICATION (CRITICAL - ANTI-HALLUCINATION):\n" +
+                "• Your training data has a cutoff date and may be outdated\n" +
+                "• If asked about a SPECIFIC person, paper, or research you DON'T RECOGNIZE:\n" +
+                "  → Say: 'I don't have verified information about [name/paper]. This might not exist or could be spelled differently.'\n" +
+                "  → DO NOT make up details about people or papers you don't know!\n" +
+                "• If web search results are provided [LIVE WEB RESEARCH], use ONLY that data\n" +
+                "• If web search found nothing, say: 'I searched but couldn't find verified information.'\n" +
+                "• NEVER fabricate facts, names, dates, or paper titles\n" +
+                "• When citing web sources, mention the source number [1], [2] etc.\n\n" +
+                "RESPONSE STYLE (CONCISE & DIRECT):\n" +
+                "• Keep answers SHORT and to the point - no unnecessary fluff\n" +
+                "• For simple questions: 1-3 sentences max\n" +
+                "• For factual questions: State the answer first, then brief explanation if needed\n" +
+                "• Use bullet points for lists instead of long paragraphs\n" +
+                "• Avoid over-explaining or repeating the same point\n" +
+                "• Don't add unnecessary pleasantries like 'Great question!' every time\n" +
+                "• Technical answers: Be precise, skip the preamble\n\n" +
                 `USER: ${userName} | DATE: ${currentDateTime} (mention only if asked)\n`;
 
             const enhancedSettings = {
@@ -382,17 +494,37 @@ const ChatWindow = ({ chatId, settings, onChatCreated, onChatUpdated }) => {
 
             let fullResponse = "";
 
-            await streamChat(chatHistory, enhancedSettings, (chunk) => {
-                fullResponse += chunk;
+            // Initialize abort controller for this specific request
+            abortControllerRef.current = new AbortController();
+            const signal = abortControllerRef.current.signal;
 
-                // Direct UI update without token filtering
-                setMessages(prev => prev.map(msg => {
-                    if (msg.id === botMsgId) {
-                        return { ...msg, content: fullResponse };
-                    }
-                    return msg;
-                }));
-            });
+            try {
+                await streamChat(chatHistory, enhancedSettings, (chunk) => {
+                    if (signal.aborted) return; // Stop processing if aborted
+
+                    fullResponse += chunk;
+
+                    // Direct UI update without token filtering
+                    setMessages(prev => prev.map(msg => {
+                        if (msg.id === botMsgId) {
+                            return { ...msg, content: fullResponse };
+                        }
+                        return msg;
+                    }));
+                }, signal); // Pass signal to service
+            } catch (err) {
+                if (err.name === 'AbortError') {
+                    console.log('Generation stopped by user');
+                    // Add [Stopped] indicator
+                    setMessages(prev => prev.map(msg =>
+                        msg.id === botMsgId
+                            ? { ...msg, content: fullResponse + " _[Stopped]_" }
+                            : msg
+                    ));
+                    return; // Don't show error for manual stop
+                }
+                throw err; // Re-throw other errors
+            }
 
             // Generate smart title for new chats after first message
             if (isNewChat || isFirstMessage) {
@@ -416,6 +548,7 @@ const ChatWindow = ({ chatId, settings, onChatCreated, onChatUpdated }) => {
                     : msg
             ));
         } finally {
+            abortControllerRef.current = null;
             clearInterval(timerRef.current);
             setIsLoading(false);
         }
@@ -469,7 +602,12 @@ const ChatWindow = ({ chatId, settings, onChatCreated, onChatUpdated }) => {
                 {/* Input Area Location - Floating at bottom */}
                 <div className="w-full max-w-3xl absolute bottom-8 px-8">
                     {/* InputArea component handles its own rendering */}
-                    <InputArea onSendMessage={handleSendMessage} disabled={false} />
+                    <InputArea
+                        onSendMessage={handleSendMessage}
+                        disabled={isLoading}
+                        isLoading={isLoading}
+                        onStopGeneration={stopGeneration}
+                    />
                 </div>
             </div>
         );
@@ -477,16 +615,13 @@ const ChatWindow = ({ chatId, settings, onChatCreated, onChatUpdated }) => {
 
     return (
         <div className="flex flex-col h-full bg-app relative">
-            {/* Clean Header */}
-            <div className="h-16 flex items-center justify-between px-6 bg-app/80 backdrop-blur-md sticky top-0 z-20 border-b border-white/5">
-                <div className="flex items-center gap-2 cursor-pointer hover:bg-white/5 px-2 py-1 rounded-lg transition-colors">
-                    <span className="text-lg font-medium text-text-primary">Kreo</span>
-                    <span className="text-lg text-text-tertiary">1.0</span>
-                    <ChevronDown size={14} className="text-text-tertiary mt-1" />
-                </div>
-
-                {/* Profile / Actions - empty for now */}
+            {/* Clean Header - Model Name only */}
+            <div className="h-16 flex items-center px-6 bg-app/80 backdrop-blur-md sticky top-0 z-20 border-b border-white/5">
                 <div className="flex items-center gap-3">
+                    <span className="text-lg font-medium text-text-primary">Kreo</span>
+                    <span className="text-sm text-text-tertiary bg-white/5 px-2 py-0.5 rounded">
+                        {settings.model || 'gemma3:12b'}
+                    </span>
                 </div>
             </div>
 
@@ -529,9 +664,14 @@ const ChatWindow = ({ chatId, settings, onChatCreated, onChatUpdated }) => {
                                                 </ReactMarkdown>
                                             ) : (
                                                 <div className="flex items-center gap-2 text-text-tertiary text-sm animate-pulse">
-                                                    <div className={`w-2 h-2 rounded-full ${msg.status === 'searching' ? 'bg-green-400' : 'bg-blue-400'}`}></div>
+                                                    <div className={`w-2 h-2 rounded-full ${msg.status === 'searching' ? 'bg-green-400' :
+                                                        msg.status === 'routing' ? 'bg-purple-400' :
+                                                            'bg-blue-400'
+                                                        }`}></div>
                                                     {msg.status === 'searching' ? (
                                                         <span>🌍 Searching the web...</span>
+                                                    ) : msg.status === 'routing' ? (
+                                                        <span>🤔 Deciding if web search needed...</span>
                                                     ) : (
                                                         <span>Thinking...</span>
                                                     )}
@@ -627,7 +767,12 @@ const ChatWindow = ({ chatId, settings, onChatCreated, onChatUpdated }) => {
             {/* Input Floating Footer */}
             <div className="p-6 pt-2 bg-gradient-to-t from-app via-app to-transparent z-20">
                 <div className="max-w-3xl mx-auto">
-                    <InputArea onSendMessage={handleSendMessage} disabled={isLoading} />
+                    <InputArea
+                        onSendMessage={handleSendMessage}
+                        disabled={isLoading}
+                        isLoading={isLoading}
+                        onStopGeneration={stopGeneration}
+                    />
                     <div className="text-center mt-2 text-[11px] text-text-tertiary">
                         Kreo can make mistakes. Consider checking important information.
                     </div>

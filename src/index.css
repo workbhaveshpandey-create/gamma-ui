@@ -159,3 +159,93 @@ body {
   margin-top: 0.5em;
   margin-bottom: 0.5em;
 }
+
+/* Table Styling - Industry Grade */
+.prose-invert table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  margin: 1.5em 0;
+  font-size: 0.9rem;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+}
+
+.prose-invert thead {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.prose-invert th {
+  padding: 12px 16px;
+  text-align: left;
+  font-weight: 600;
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.prose-invert td {
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  color: var(--text-secondary);
+}
+
+.prose-invert tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.prose-invert tbody tr:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+/* Alternating row colors */
+.prose-invert tbody tr:nth-child(even) {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+/* Blockquote Styling */
+.prose-invert blockquote {
+  border-left: 3px solid var(--accent-primary);
+  padding-left: 1rem;
+  margin: 1.5em 0;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+/* Horizontal Rule */
+.prose-invert hr {
+  border: none;
+  height: 1px;
+  background: var(--border-subtle);
+  margin: 2em 0;
+}
+
+/* Headings in Chat */
+.prose-invert h1,
+.prose-invert h2,
+.prose-invert h3,
+.prose-invert h4 {
+  color: var(--text-primary);
+  font-weight: 600;
+  margin-top: 1.5em;
+  margin-bottom: 0.75em;
+}
+
+.prose-invert h1 {
+  font-size: 1.5rem;
+}
+
+.prose-invert h2 {
+  font-size: 1.25rem;
+}
+
+.prose-invert h3 {
+  font-size: 1.1rem;
+}
+
+.prose-invert h4 {
+  font-size: 1rem;
+}

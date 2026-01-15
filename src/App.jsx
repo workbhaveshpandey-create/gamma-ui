@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import Sidebar from './components/Sidebar';
 import ChatWindow from './components/ChatWindow';
+import SettingsPanel from './components/SettingsPanel';
 import { getAllChats, getGroupedChats, deleteChat } from './services/chatStorage';
 import { warmModel } from './services/ollamaService';
 
@@ -10,6 +11,7 @@ function App() {
 
   const [isSidebarOpen, setSidebarOpen] = useState(true);
   const [isConnected, setIsConnected] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   const defaultSettings = {
     model: 'gemma3:12b',
@@ -20,7 +22,7 @@ function App() {
     repeat_penalty: 1.1,
     seed: 42,
     systemPrompt: 'You are a helpful AI assistant.',
-    userName: 'User', // Persisted user name
+    userName: 'User',
   };
 
   const [appSettings, setAppSettings] = useState(() => {
@@ -45,7 +47,7 @@ function App() {
   useEffect(() => {
     refreshChatHistory();
     // Pre-load model on app start for faster first response
-    warmModel();
+    warmModel(appSettings.model);
   }, [refreshChatHistory]);
 
   // Check backend connection
@@ -83,6 +85,14 @@ function App() {
     refreshChatHistory();
   };
 
+  const handleSaveSettings = (newSettings) => {
+    setAppSettings(newSettings);
+    // Warm the new model if it changed
+    if (newSettings.model !== appSettings.model) {
+      warmModel(newSettings.model);
+    }
+  };
+
   return (
     <div className="flex w-full h-screen bg-app text-zinc-100 overflow-hidden font-sans">
       <Sidebar
@@ -94,6 +104,7 @@ function App() {
         onToggle={() => setSidebarOpen(!isSidebarOpen)}
         isConnected={isConnected}
         chatHistory={chatHistory}
+        onOpenSettings={() => setIsSettingsOpen(true)}
       />
 
       <main className="flex-1 relative flex flex-col h-full min-w-0 bg-app transition-all duration-300 ease-custom">
@@ -105,6 +116,14 @@ function App() {
             refreshChatHistory();
           }}
           onChatUpdated={refreshChatHistory}
+        />
+
+        {/* Settings Panel */}
+        <SettingsPanel
+          isOpen={isSettingsOpen}
+          onClose={() => setIsSettingsOpen(false)}
+          onSave={handleSaveSettings}
+          initialSettings={appSettings}
         />
       </main>
     </div>

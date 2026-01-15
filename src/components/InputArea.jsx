@@ -45,7 +45,7 @@ const compressImage = (dataUrl, maxWidth = 1920, quality = 0.85) => {
     });
 };
 
-const InputArea = ({ onSendMessage, disabled }) => {
+const InputArea = ({ onSendMessage, disabled, isLoading, onStopGeneration }) => {
     const [input, setInput] = useState('');
     const [isCameraOpen, setCameraOpen] = useState(false);
     const [attachment, setAttachment] = useState(null);
@@ -375,6 +375,7 @@ const InputArea = ({ onSendMessage, disabled }) => {
                             onClick={() => fileInputRef.current?.click()}
                             className="p-2 text-text-tertiary hover:text-text-primary hover:bg-white/5 rounded-full transition-colors"
                             title="Attach file"
+                            disabled={isLoading}
                         >
                             <Paperclip size={20} strokeWidth={1.5} />
                         </button>
@@ -384,6 +385,7 @@ const InputArea = ({ onSendMessage, disabled }) => {
                             onClick={() => setCameraOpen(true)}
                             className="p-2 text-text-tertiary hover:text-text-primary hover:bg-white/5 rounded-full transition-colors"
                             title="Use Camera"
+                            disabled={isLoading}
                         >
                             <Camera size={20} strokeWidth={1.5} />
                         </button>
@@ -391,26 +393,38 @@ const InputArea = ({ onSendMessage, disabled }) => {
                         <button
                             type="button"
                             onClick={toggleRecording}
-                            className={`p-2 rounded-full transition-colors ${isRecording ? 'text-red-400 bg-red-400/10' : 'text-text-tertiary hover:text-text-primary hover:bg-white/5'}`}
+                            className={`p-2 rounded-full transition-colors ${isRecording ? 'text-red-400 bg-red-400/10' : isLoading ? 'opacity-50 cursor-not-allowed text-text-tertiary' : 'text-text-tertiary hover:text-text-primary hover:bg-white/5'}`}
                             title={isRecording ? "Stop Recording" : "Use Voice"}
+                            disabled={isLoading}
                         >
                             {isRecording ? <StopCircle size={20} strokeWidth={1.5} /> : <Mic size={20} strokeWidth={1.5} />}
                         </button>
                     </div>
 
                     <div className="flex items-center gap-2">
-                        <button
-                            type="submit"
-                            disabled={(!input.trim() && !attachment) || disabled}
-                            className={`
-                                w-8 h-8 rounded-full flex items-center justify-center transition-all duration-200
-                                ${(input.trim() || attachment)
-                                    ? 'bg-white text-black hover:bg-zinc-200'
-                                    : 'bg-zinc-700 text-zinc-500 cursor-not-allowed'}
-                            `}
-                        >
-                            <ArrowUp size={18} strokeWidth={2.5} />
-                        </button>
+                        {isLoading ? (
+                            <button
+                                type="button"
+                                onClick={onStopGeneration}
+                                className="w-8 h-8 rounded-full flex items-center justify-center transition-all duration-200 bg-white text-black hover:bg-zinc-200"
+                                title="Stop generation"
+                            >
+                                <div className="w-3 h-3 bg-black rounded-[2px]" />
+                            </button>
+                        ) : (
+                            <button
+                                type="submit"
+                                disabled={(!input.trim() && !attachment)}
+                                className={`
+                                    w-8 h-8 rounded-full flex items-center justify-center transition-all duration-200
+                                    ${(input.trim() || attachment)
+                                        ? 'bg-white text-black hover:bg-zinc-200'
+                                        : 'bg-zinc-700 text-zinc-500 cursor-not-allowed'}
+                                `}
+                            >
+                                <ArrowUp size={18} strokeWidth={2.5} />
+                            </button>
+                        )}
                     </div>
                 </div>
             </form>

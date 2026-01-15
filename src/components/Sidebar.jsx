@@ -1,6 +1,6 @@
-import { Plus, PanelLeft, Trash2 } from 'lucide-react';
+import { Plus, PanelLeft, Trash2, Settings } from 'lucide-react';
 
-const Sidebar = ({ currentChatId, onSelectChat, onNewChat, onDeleteChat, isOpen, onToggle, isConnected, chatHistory = {} }) => {
+const Sidebar = ({ currentChatId, onSelectChat, onNewChat, onDeleteChat, isOpen, onToggle, isConnected, chatHistory = {}, onOpenSettings }) => {
 
     const hasChats = Object.values(chatHistory).some(group => group.length > 0);
 
@@ -107,8 +107,19 @@ const Sidebar = ({ currentChatId, onSelectChat, onNewChat, onDeleteChat, isOpen,
                 )}
             </div>
 
-            {/* Simple Footer - Removed Settings */}
-            <div className="p-4 mt-auto">
+            {/* Footer with Settings */}
+            <div className={`p-4 mt-auto border-t border-white/5 ${isOpen ? '' : 'flex justify-center'}`}>
+                <button
+                    onClick={onOpenSettings}
+                    className={`
+                        flex items-center gap-3 text-text-secondary hover:text-text-primary hover:bg-surface-hover rounded-lg transition-colors
+                        ${isOpen ? 'px-3 py-2 w-full' : 'p-2'}
+                    `}
+                    title="Settings"
+                >
+                    <Settings size={20} />
+                    {isOpen && <span className="text-sm">Settings</span>}
+                </button>
             </div>
         </aside>
     );
