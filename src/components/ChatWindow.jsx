@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import InputArea from './InputArea';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { streamChat, generateChatTitle } from '../services/ollamaService';
+import { streamChat, generateChatTitle, detectCorrection } from '../services/ollamaService';
 import { createChat, getChatById, updateChatMessages, updateChatTitle, getRecentContext } from '../services/chatStorage';
 import { learnFact, searchKnowledge } from '../services/knowledgeService';
 import { FileText, ChevronDown, ChevronUp, BookOpen, Check, X, GraduationCap } from 'lucide-react';
@@ -197,6 +197,29 @@ const ChatWindow = ({ chatId, settings, onChatCreated, onChatUpdated }) => {
     const handleSendMessage = async (text, attachment) => {
         if (!text.trim() && !attachment) return;
 
+        // === AUTO-LEARNING: Check if this message corrects the previous bot message ===
+        // We do this asynchronously but capture the necessary state NOW
+        const lastMsg = messages[messages.length - 1];
+        const lastUserMsg = messages[messages.length - 2];
+
+        if (lastMsg && lastMsg.role === 'assistant' && lastUserMsg && lastUserMsg.role === 'user' && !attachment) {
+            console.log("🕵️ Checking if user is correcting the bot...");
+            // Fire and forget (don't await)
+            detectCorrection(lastUserMsg.content, lastMsg.content, text, settings.model)
+                .then(correction => {
+                    if (correction) {
+                        console.log("🎓 PROACTIVE LEARNING TRIGGERED:", correction);
+                        learnFact(correction.question, correction.answer).then(success => {
+                            if (success) {
+                                console.log("✅ Knowledge base updated automatically!");
+                                // Optional: We could trigger a UI toast here
+                            }
+                        });
+                    }
+                })
+                .catch(err => console.error("Auto-learning failed:", err));
+        }
+
         // Build user message content based on attachment type
         let displayContent = text; // What to show in the UI
         let aiContent = text; // What to send to the AI
@@ -204,13 +227,41 @@ const ChatWindow = ({ chatId, settings, onChatCreated, onChatUpdated }) => {
         let knowledgeContext = "";
         let cleanText = text;
 
-        // Manual Force Search Command
+        // Manual Force Search Command (Slash commands & Natural Language)
         let forceSearch = false;
-        if (text.startsWith('/web ') || text.startsWith('/search ')) {
+
+        // Regex for explicit search triggers
+        // Matches: /web, /search, search for, google, look up, find info on
+        // Also matches "search over net", "search the web", etc.
+        // Regex for explicit search triggers
+        // Matches: /web, /search, search for, google, look up, find info on
+        // Now much more aggressive in consuming "connector" words to ensure we get a clean query or empty string
+        const searchTriggerRegex = /^(?:\/(?:web|search)|(?:please\s+)?(?:search(?:\s+(?:for|over|on|about|this))?|google|look\s+up|find\s+(?:more\s+)?info(?:rmation)?\s+on|check\s+online\s+(?:for|about)?))\s*/i;
+
+        // Words to ignore if they are the ONLY thing left in the query (generic terms)
+        // Expanded to include "over the internet", "on web", "this over net", etc.
+        const genericTerms = /^(?:(?:on|over|in|the|this|that|it)\s*)*(?:web|net|internet|online|here|page|site)?$/i;
+
+        if (searchTriggerRegex.test(text)) {
             forceSearch = true;
-            cleanText = text.replace(/^\/(web|search)\s+/, '');
-            displayContent = cleanText;
-            aiContent = cleanText;
+            cleanText = text.replace(searchTriggerRegex, '').trim();
+
+            // IF the remaining text is just "over net" or "the web" (e.g. from "search over net"), 
+            // OR if it is completely empty, we assume the user wants to search for the PREVIOUS context.
+            if (!cleanText || genericTerms.test(cleanText)) {
+                // Find the last user message that wasn't this current one (obviously)
+                // Since 'messages' state hasn't updated yet, we look at the last element in 'messages'
+                // If the last message was the BOT (which it usually is), we want the user message BEFORE that.
+                const lastUserMsg = [...messages].reverse().find(m => m.role === 'user');
+                if (lastUserMsg) {
+                    cleanText = lastUserMsg.content;
+                    console.log("🔄 Contextual Search Triggered! Re-using query:", cleanText);
+                    aiContent = `(Searching web for: "${cleanText}")`; // Feedback for the model/history
+                }
+            } else {
+                aiContent = cleanText;
+            }
+            displayContent = text; // Keep user's command as is for display
         }
 
         // Process attachments FIRST (this is fast)

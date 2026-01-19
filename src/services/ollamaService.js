@@ -202,6 +202,7 @@ export const shouldSearchWeb = async (userMessage, model = 'gemma3:12b') => {
                 content: `You are a helper that decides if a user question needs live web search.
                 
 Rules:
+- Say YES if the user EXPLICITLY asks to search (e.g., "search for", "check online", "google this").
 - Say YES for: news, stocks, weather, sports scores, recent events (2024+), specific unknown entities.
 - Say NO for: math, code, translations, greetings, general knowledge, physics, history (before 2023).
 
@@ -238,5 +239,88 @@ Reply with ONLY: YES or NO`
     } catch (error) {
         console.error('Router classification failed:', error);
         return false; // Default to no search on error
+    }
+};
+
+/**
+ * Auto-Correction Detection: Checks if the user is correcting the previous answer.
+ * @param {string} previousUserMsg - The original question
+ * @param {string} previousBotMsg - The incorrect answer
+ * @param {string} currentUserMsg - The user's correction
+ * @param {string} model - The model to use
+ * @returns {Promise<Object|null>} Returns { question, answer } or null
+ */
+export const detectCorrection = async (previousUserMsg, previousBotMsg, currentUserMsg, model = 'gemma3:12b') => {
+    // Quick heuristic layer to avoid LLM call for obvious non-corrections
+    const correctionKeywords = ['wrong', 'incorrect', 'no', 'actually', 'false', 'mistake', 'error', 'not true', 'stop', 'bad'];
+    const likelyCorrection = correctionKeywords.some(kw => currentUserMsg.toLowerCase().includes(kw));
+
+    // If it doesn't look like a correction at all, skip valuable LLM inference time
+    // UNLESS the message is very short (might be "No, it's X")
+    if (!likelyCorrection && currentUserMsg.length > 50) {
+        return null;
+    }
+
+    const payload = {
+        model: model,
+        messages: [
+            {
+                role: 'system',
+                content: `You are a Supervisor AI. Your job is to check if the User is correcting the Bot's previous answer.
+                
+Analyze this conversation triplet:
+1. Original Question
+2. Bot Answer
+3. User Reply
+
+IF the User Reply is correcting the Bot Answer (stating it is wrong, providing the right fact, etc.):
+- Extract the FACT based on the user's correction.
+- Return a JSON object: { "isCorrection": true, "question": "The original question", "answer": "The CORRECTED answer based on user's reply" }
+
+IF the User Reply is NOT a correction (just a follow-up, a new question, or agreement):
+- Return JSON: { "isCorrection": false }
+
+RESPONSE FORMAT: JSON ONLY. No markdown.`
+            },
+            {
+                role: 'user',
+                content: `Original Question: "${previousUserMsg}"
+Bot Answer: "${previousBotMsg}"
+User Reply: "${currentUserMsg}"`
+            }
+        ],
+        stream: false,
+        options: {
+            temperature: 0.0,
+            num_predict: 256
+        },
+        format: "json" // Force valid JSON
+    };
+
+    try {
+        const response = await fetch(`${OLLAMA_BASE_URL}/chat`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) return null;
+
+        const data = await response.json();
+        const result = JSON.parse(data.message?.content || '{}');
+
+        console.log('🧠 Correction Detection Result:', result);
+
+        if (result.isCorrection && result.question && result.answer) {
+            return {
+                question: result.question,
+                answer: result.answer
+            };
+        }
+        return null;
+
+    } catch (error) {
+        console.error('Correction detection failed:', error);
+        return null;
     }
 };
