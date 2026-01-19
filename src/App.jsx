@@ -5,6 +5,8 @@ import SettingsPanel from './components/SettingsPanel';
 import { getAllChats, getGroupedChats, deleteChat } from './services/chatStorage';
 import { warmModel } from './services/ollamaService';
 
+import ImageGalleryPanel from './components/ImageGalleryPanel';
+
 function App() {
   const [currentChatId, setCurrentChatId] = useState(null);
   const [chatHistory, setChatHistory] = useState({});
@@ -12,6 +14,7 @@ function App() {
   const [isSidebarOpen, setSidebarOpen] = useState(true);
   const [isConnected, setIsConnected] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isGalleryOpen, setIsGalleryOpen] = useState(false);
 
   const defaultSettings = {
     model: 'gemma3:12b',
@@ -107,6 +110,7 @@ function App() {
         isConnected={isConnected}
         chatHistory={chatHistory}
         onOpenSettings={() => setIsSettingsOpen(true)}
+        onOpenGallery={() => setIsGalleryOpen(true)}
       />
 
       <main className="flex-1 relative flex flex-col h-full min-w-0 bg-app transition-all duration-300 ease-custom">
@@ -126,6 +130,12 @@ function App() {
           onClose={() => setIsSettingsOpen(false)}
           onSave={handleSaveSettings}
           initialSettings={appSettings}
+        />
+
+        {/* Image Gallery Panel */}
+        <ImageGalleryPanel
+          isOpen={isGalleryOpen}
+          onClose={() => setIsGalleryOpen(false)}
         />
       </main>
     </div>

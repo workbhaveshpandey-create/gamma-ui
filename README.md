@@ -28,6 +28,13 @@ Before you begin, ensure you have the following installed:
     npm install
     ```
 
+4.  **Install Python Dependencies** (Required for Image Generation & Transcription):
+    Ensure you have Python 3.8+ installed.
+
+    ```bash
+    pip install numpy openai-whisper torch requests beautifulsoup4 duckduckgo-search diffusers transformers accelerate
+    ```
+
 ## 🤖 Model Setup
 
 This application defaults to **`gemma3:12b`** for a balance of performance and intelligence. You must pull this model (or another one) to use the app.

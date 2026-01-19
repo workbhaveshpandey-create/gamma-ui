@@ -1,6 +1,6 @@
 import { Plus, PanelLeft, Trash2, Settings } from 'lucide-react';
 
-const Sidebar = ({ currentChatId, onSelectChat, onNewChat, onDeleteChat, isOpen, onToggle, isConnected, chatHistory = {}, onOpenSettings }) => {
+const Sidebar = ({ currentChatId, onSelectChat, onNewChat, onDeleteChat, isOpen, onToggle, isConnected, chatHistory = {}, onOpenSettings, onOpenGallery }) => {
 
     const hasChats = Object.values(chatHistory).some(group => group.length > 0);
 
@@ -108,7 +108,24 @@ const Sidebar = ({ currentChatId, onSelectChat, onNewChat, onDeleteChat, isOpen,
             </div>
 
             {/* Footer with Settings */}
-            <div className={`p-3 mt-auto border-t border-white/5 ${isOpen ? '' : 'flex justify-center'}`}>
+            <div className={`p-3 mt-auto border-t border-white/5 space-y-1 ${isOpen ? '' : 'flex flex-col items-center'}`}>
+
+                {/* Gallery Button */}
+                <button
+                    onClick={onOpenGallery}
+                    className={`
+                        flex items-center gap-3 text-text-secondary hover:text-text-primary hover:bg-surface-hover rounded-lg transition-all duration-200 active:scale-95
+                        ${isOpen ? 'px-3 py-2.5 w-full' : 'p-2 justify-center'}
+                    `}
+                    title="Image Gallery"
+                >
+                    <div className="w-5 h-5 flex items-center justify-center">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2" /><circle cx="9" cy="9" r="2" /><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" /></svg>
+                    </div>
+                    {isOpen && <span className="text-sm font-medium animate-fade-in">Gallery</span>}
+                </button>
+
+                {/* Settings Button */}
                 <button
                     onClick={onOpenSettings}
                     className={`

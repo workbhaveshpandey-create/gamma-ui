@@ -222,6 +222,37 @@ app.post('/api/generate-image', express.json(), (req, res) => {
     });
 });
 
+// List Generated Images
+app.get('/api/generated-images', (req, res) => {
+    const outputDir = path.join(process.cwd(), 'public', 'generated');
+
+    if (!fs.existsSync(outputDir)) {
+        return res.json([]);
+    }
+
+    try {
+        const files = fs.readdirSync(outputDir)
+            .filter(file => file.endsWith('.png') || file.endsWith('.jpg'))
+            .map(file => {
+                const filePath = path.join(outputDir, file);
+                const stats = fs.statSync(filePath);
+                return {
+                    filename: file,
+                    url: `/generated/${file}`,
+                    timestamp: stats.mtimeMs, // Creation time
+                    size: stats.size
+                };
+            })
+            // Sort newest first
+            .sort((a, b) => b.timestamp - a.timestamp);
+
+        res.json(files);
+    } catch (e) {
+        console.error("Failed to list generated images:", e);
+        res.status(500).json({ error: "Failed to list images" });
+    }
+});
+
 app.post('/api/download-model', express.json(), (req, res) => {
     const { modelPath } = req.body;
     if (!modelPath) return res.status(400).json({ error: "Missing modelPath" });
