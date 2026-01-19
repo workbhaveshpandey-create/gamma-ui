@@ -202,9 +202,10 @@ export const shouldSearchWeb = async (userMessage, model = 'gemma3:12b') => {
                 content: `You are a helper that decides if a user question needs live web search.
                 
 Rules:
-- Say YES if the user EXPLICITLY asks to search (e.g., "search for", "check online", "google this").
+- Say YES if the user EXPLICITLY asks to search (e.g., "search for", "check online", "google this", "check it over internet").
 - Say YES for: news, stocks, weather, sports scores, recent events (2024+), specific unknown entities.
 - Say NO for: math, code, translations, greetings, general knowledge, physics, history (before 2023).
+- You always have web search access so search web if you are not sure or users ask to search
 
 Reply with ONLY: YES or NO`
             },
@@ -239,6 +240,59 @@ Reply with ONLY: YES or NO`
     } catch (error) {
         console.error('Router classification failed:', error);
         return false; // Default to no search on error
+    }
+};
+
+/**
+ * Image Intent Detection: Decides if the user wants to generate an image.
+ * @param {string} userMessage 
+ * @param {string} model 
+ * @returns {Promise<boolean>}
+ */
+export const detectImageIntent = async (userMessage, model = 'gemma3:12b') => {
+    const payload = {
+        model: model,
+        messages: [
+            {
+                role: 'system',
+                content: `You are a helper that detects if a user wants to GENERATE or DRAW an image.
+                
+Rules:
+- Say YES if the user asks to "draw", "create a picture", "generate an image", "visualize", "show me what X looks like" (if X is visual).
+- Say YES for: "cyberpunk city", "cat in space" (if it looks like an art prompt).
+- Say NO for: "describe", "tell me about", "what is", "how do I", "python code for", "search for".
+- If ambiguous, lean towards NO unless it's clearly a visual request.
+
+Reply with ONLY: YES or NO`
+            },
+            {
+                role: 'user',
+                content: userMessage.slice(0, 300)
+            }
+        ],
+        stream: false,
+        options: {
+            temperature: 0.0,
+            num_predict: 3
+        }
+    };
+
+    try {
+        const response = await fetch(`${OLLAMA_BASE_URL}/chat`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) return false;
+
+        const data = await response.json();
+        const answer = data.message?.content?.trim().toUpperCase() || '';
+        console.log(`🎨 Image Intent: "${answer}" for: "${userMessage.slice(0, 50)}..."`);
+        return answer.startsWith('YES');
+    } catch (error) {
+        console.error('Image intent check failed:', error);
+        return false;
     }
 };
 

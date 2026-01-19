@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Save, ChevronDown, Check, Settings, User, Globe, Cpu } from 'lucide-react';
+import { X, Save, ChevronDown, Check, Settings, User, Globe, Cpu, Image as ImageIcon, Download, Loader2, FolderOpen, FolderInput } from 'lucide-react';
 import { getAvailableModels } from '../services/ollamaService';
 
 const SettingsPanel = ({ isOpen, onClose, onSave, initialSettings }) => {
@@ -7,6 +7,8 @@ const SettingsPanel = ({ isOpen, onClose, onSave, initialSettings }) => {
     const [availableModels, setAvailableModels] = useState([]);
     const [isLoadingModels, setIsLoadingModels] = useState(true);
     const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false);
+    const [isDownloadingModel, setIsDownloadingModel] = useState(false);
+    const [downloadStatus, setDownloadStatus] = useState('');
     const dropdownRef = useRef(null);
 
     useEffect(() => {
@@ -49,6 +51,57 @@ const SettingsPanel = ({ isOpen, onClose, onSave, initialSettings }) => {
     const handleSelectModel = (modelName) => {
         handleChange('model', modelName);
         setIsModelDropdownOpen(false);
+    };
+
+    const handleDownloadModel = async () => {
+        if (!settings.diffusionModelPath) return;
+        setIsDownloadingModel(true);
+        setDownloadStatus('Starting download... this may take a while (~4GB)');
+
+        try {
+            const res = await fetch('/api/download-model', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ modelPath: settings.diffusionModelPath })
+            });
+            const data = await res.json();
+            if (data.success) {
+                setDownloadStatus('Example: Success! Model Ready.');
+                setTimeout(() => setDownloadStatus(''), 5000);
+            } else {
+                setDownloadStatus('Error: ' + (data.error || 'Unknown error'));
+            }
+        } catch (e) {
+            setDownloadStatus('Network Error: ' + e.message);
+        } finally {
+            setIsDownloadingModel(false);
+        }
+    };
+
+
+    const handleSelectFolder = async () => {
+        try {
+            const res = await fetch('/api/utils/select-folder', { method: 'POST' });
+            const data = await res.json();
+            if (data.success && data.path) {
+                handleChange('diffusionModelPath', data.path);
+            }
+        } catch (e) {
+            console.error("Failed to select folder", e);
+        }
+    };
+
+    const handleOpenFolder = async () => {
+        if (!settings.diffusionModelPath) return;
+        try {
+            await fetch('/api/utils/open-folder', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path: settings.diffusionModelPath })
+            });
+        } catch (e) {
+            console.error("Failed to open folder", e);
+        }
     };
 
     const selectedModel = availableModels.find(m => m.name === settings.model);
@@ -209,6 +262,59 @@ const SettingsPanel = ({ isOpen, onClose, onSave, initialSettings }) => {
                                 </div>
                             </div>
                             <p className="text-xs text-zinc-600">Sets local time & news preference</p>
+                        </div>
+                    </div>
+
+                    {/* Divider */}
+                    <div className="border-t border-white/5" />
+
+                    {/* Image Generation Settings */}
+                    <div className="space-y-3">
+                        <div className="flex items-center gap-2 text-xs font-semibold text-zinc-400 uppercase tracking-wider">
+                            <ImageIcon size={14} />
+                            <span>Image Generation (Local)</span>
+                        </div>
+
+                        <div className="space-y-2">
+                            <label className="text-sm text-zinc-300">Model Path</label>
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={handleSelectFolder}
+                                    title="Choose folder..."
+                                    className="bg-zinc-700/50 hover:bg-zinc-700 border border-white/10 rounded-xl px-3 flex items-center justify-center text-zinc-400 hover:text-white transition-colors"
+                                >
+                                    <FolderInput size={18} />
+                                </button>
+                                <input
+                                    type="text"
+                                    value={settings.diffusionModelPath || './models'}
+                                    onChange={(e) => handleChange('diffusionModelPath', e.target.value)}
+                                    placeholder="./models"
+                                    className="flex-1 bg-zinc-800/50 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                                />
+                                <button
+                                    onClick={handleOpenFolder}
+                                    title="Open content in Finder"
+                                    disabled={!settings.diffusionModelPath}
+                                    className="bg-zinc-700/50 hover:bg-zinc-700 border border-white/10 rounded-xl px-3 flex items-center justify-center text-zinc-400 hover:text-white transition-colors disabled:opacity-50"
+                                >
+                                    <FolderOpen size={18} />
+                                </button>
+                                <button
+                                    onClick={handleDownloadModel}
+                                    disabled={isDownloadingModel}
+                                    className="bg-purple-600/20 hover:bg-purple-600/40 text-purple-400 border border-purple-500/30 rounded-xl px-4 flex items-center justify-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                    title="Download Stable Diffusion v1.5 to this path"
+                                >
+                                    {isDownloadingModel ? <Loader2 size={18} className="animate-spin" /> : <Download size={18} />}
+                                </button>
+                            </div>
+                            {downloadStatus && (
+                                <p className={`text-xs ${downloadStatus.includes('Error') ? 'text-red-400' : 'text-green-400'} animate-pulse`}>
+                                    {downloadStatus}
+                                </p>
+                            )}
+                            <p className="text-xs text-zinc-600">Folder where Stable Diffusion weights are stored.</p>
                         </div>
                     </div>
 

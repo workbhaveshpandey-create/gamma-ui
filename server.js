@@ -175,7 +175,126 @@ app.post('/api/web-search', express.json(), (req, res) => {
         }
     });
 });
+// --- Image Generation Endpoints ---
+app.post('/api/generate-image', express.json(), (req, res) => {
+    const { prompt, modelPath } = req.body;
+    if (!prompt || !modelPath) return res.status(400).json({ error: "Missing prompt or modelPath" });
 
+    const scriptPath = path.join(__dirname, 'generate_image.py');
+
+    // Spawn python script with model_path argument
+    const pythonProcess = spawn('python3', [scriptPath, prompt, '--model_path', modelPath]);
+
+    let dataBuffer = '';
+    let errorBuffer = '';
+
+    pythonProcess.stdout.on('data', (data) => dataBuffer += data.toString());
+    pythonProcess.stderr.on('data', (data) => errorBuffer += data.toString());
+
+    pythonProcess.on('close', (code) => {
+        // Python might print json even if it fails partially, but let's check code
+        try {
+            // Find the last line that looks like JSON in case of logs
+            const lines = dataBuffer.trim().split('\n');
+            const lastLine = lines[lines.length - 1];
+            const result = JSON.parse(lastLine);
+
+            if (result.error) {
+                res.status(500).json(result);
+            } else {
+                res.json(result);
+            }
+        } catch (e) {
+            console.error(`Image Gen Failed: ${dataBuffer} | Err: ${errorBuffer}`);
+            res.status(500).json({ error: "Generation failed", details: errorBuffer || dataBuffer });
+        }
+    });
+});
+
+app.post('/api/download-model', express.json(), (req, res) => {
+    const { modelPath } = req.body;
+    if (!modelPath) return res.status(400).json({ error: "Missing modelPath" });
+
+    const scriptPath = path.join(__dirname, 'download_model.py');
+    console.log(`Starting model download to ${modelPath}...`);
+
+    // This can take a long time, so we set a long timeout or handle async
+    // specific to this simple server, we'll keep the connection open but it typically times out.
+    // Ideally we should use SSE or WebSockets, but for now we wait.
+
+    const pythonProcess = spawn('python3', [scriptPath, '--model_path', modelPath]);
+
+    let dataBuffer = '';
+    let errorBuffer = '';
+
+    pythonProcess.stdout.on('data', (data) => {
+        const str = data.toString();
+        dataBuffer += str;
+        console.log(`[Download]: ${str}`);
+    });
+
+    pythonProcess.stderr.on('data', (data) => {
+        const str = data.toString();
+        errorBuffer += str;
+        console.error(`[Download Err]: ${str}`);
+    });
+
+    pythonProcess.on('close', (code) => {
+        try {
+            // Try to parse the last JSON line
+            const lines = dataBuffer.trim().split('\n');
+            const lastLine = lines[lines.length - 1];
+            const result = JSON.parse(lastLine);
+            res.json(result);
+        } catch (e) {
+            res.status(500).json({ error: "Download failed or timed out", details: errorBuffer });
+        }
+    });
+});
+
+// --- OS Utilities ---
+app.post('/api/utils/open-folder', (req, res) => {
+    let { path: folderPath } = req.body;
+    if (!folderPath) return res.status(400).json({ error: "Missing path" });
+
+    // Resolve relative paths to absolute
+    if (!path.isAbsolute(folderPath)) {
+        folderPath = path.resolve(__dirname, folderPath);
+    }
+
+    // Create folder if it doesn't exist
+    if (!fs.existsSync(folderPath)) {
+        try {
+            fs.mkdirSync(folderPath, { recursive: true });
+            console.log(`Created folder: ${folderPath}`);
+        } catch (e) {
+            console.error("Failed to create folder:", e);
+            return res.status(500).json({ error: "Failed to create folder" });
+        }
+    }
+
+    exec(`open "${folderPath}"`, (err) => {
+        if (err) {
+            console.error("Open folder failed:", err);
+            return res.status(500).json({ error: "Failed to open folder" });
+        }
+        res.json({ success: true });
+    });
+});
+
+app.post('/api/utils/select-folder', (req, res) => {
+    // Uses AppleScript to show a folder picker
+    const script = `osascript -e 'POSIX path of (choose folder with prompt "Select Model Folder")'`;
+    exec(script, (err, stdout, stderr) => {
+        if (err) {
+            // User likely cancelled
+            console.log("Folder select cancelled or failed:", stderr);
+            return res.json({ cancelled: true });
+        }
+        const selectedPath = stdout.trim();
+        res.json({ success: true, path: selectedPath });
+    });
+});
 
 app.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);

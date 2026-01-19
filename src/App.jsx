@@ -24,6 +24,7 @@ function App() {
     systemPrompt: 'You are a helpful AI assistant.',
     userName: 'User',
     region: 'en-IN',
+    diffusionModelPath: './models',
   };
 
   const [appSettings, setAppSettings] = useState(() => {

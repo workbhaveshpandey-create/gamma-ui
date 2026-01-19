@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import InputArea from './InputArea';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { streamChat, generateChatTitle, detectCorrection } from '../services/ollamaService';
+import { streamChat, shouldSearchWeb, detectCorrection, detectImageIntent, generateChatTitle } from '../services/ollamaService';
 import { createChat, getChatById, updateChatMessages, updateChatTitle, getRecentContext } from '../services/chatStorage';
 import { learnFact, searchKnowledge } from '../services/knowledgeService';
 import { FileText, ChevronDown, ChevronUp, BookOpen, Check, X, GraduationCap } from 'lucide-react';
@@ -236,7 +236,8 @@ const ChatWindow = ({ chatId, settings, onChatCreated, onChatUpdated }) => {
         // Regex for explicit search triggers
         // Matches: /web, /search, search for, google, look up, find info on
         // Now much more aggressive in consuming "connector" words to ensure we get a clean query or empty string
-        const searchTriggerRegex = /^(?:\/(?:web|search)|(?:please\s+)?(?:search(?:\s+(?:for|over|on|about|this))?|google|look\s+up|find\s+(?:more\s+)?info(?:rmation)?\s+on|check\s+online\s+(?:for|about)?))\s*/i;
+        // Expanded "check" logic to catch "check it over internet", "check the web", etc.
+        const searchTriggerRegex = /^(?:\/(?:web|search)|(?:please\s+)?(?:search(?:\s+(?:for|over|on|about|this))?|google|look\s+up|find\s+(?:more\s+)?info(?:rmation)?\s+on|check\s+(?:it\s+|this\s+)?(?:on|over\s+)?(?:the\s+)?(?:online|web|net|internet)\s+(?:for|about)?))\s*/i;
 
         // Words to ignore if they are the ONLY thing left in the query (generic terms)
         // Expanded to include "over the internet", "on web", "this over net", etc.
@@ -262,6 +263,46 @@ const ChatWindow = ({ chatId, settings, onChatCreated, onChatUpdated }) => {
                 aiContent = cleanText;
             }
             displayContent = text; // Keep user's command as is for display
+        }
+
+        // === Image Generation Trigger ===
+        // Matches: /image <prompt>, generate image of <prompt>, create picture of <prompt>
+        const imageTriggerRegex = /^(?:\/image|generate\s+(?:an\s+)?image\s+(?:of\s+)?|create\s+(?:a\s+)?picture\s+(?:of\s+)?|draw\s+(?:me\s+)?(?:a\s+)?)\s*/i;
+        let isImageGen = false;
+        let imagePrompt = "";
+
+        if (imageTriggerRegex.test(text)) {
+            isImageGen = true;
+            imagePrompt = text.replace(imageTriggerRegex, '').trim();
+            // Fallback for empty prompt?
+            if (!imagePrompt) {
+                // Use previous context if prompt is empty?
+                const lastUserMsg = [...messages].reverse().find(m => m.role === 'user');
+                if (lastUserMsg) imagePrompt = lastUserMsg.content;
+            }
+        }
+
+        // === SMART INTENT DETECTION (If no explicit trigger) ===
+        // If it's NOT a web search command AND NOT an explicit image command,
+        // let's ask the LLM if it LOOKS like an image request.
+        if (!isImageGen && !forceSearch && !attachment) {
+            // Only check short-ish queries to avoid huge latency on long texts
+            if (text.length < 200) {
+                try {
+                    setMessages(prev => prev.map(msg =>
+                        msg.id === botMsgId ? { ...msg, status: 'routing' } : msg
+                    ));
+
+                    const looksLikeImage = await detectImageIntent(text, settings.model);
+                    if (looksLikeImage) {
+                        console.log("🎨 Smart Intent Detected: This is an image generation request!");
+                        isImageGen = true;
+                        imagePrompt = text;
+                    }
+                } catch (err) {
+                    console.warn("Intent detection failed, proceeding as chat:", err);
+                }
+            }
         }
 
         // Process attachments FIRST (this is fast)
@@ -518,6 +559,11 @@ DO NOT fabricate an answer based on unrelated search results!`;
                 "• Avoid over-explaining or repeating the same point\n" +
                 "• Don't add unnecessary pleasantries like 'Great question!' every time\n" +
                 "• Technical answers: Be precise, skip the preamble\n\n" +
+                "IMAGE GENERATION CAPABILITY:\n" +
+                "• You CAN generate images locally on the user's Mac.\n" +
+                "• If the user asks for an image (e.g., 'draw a cat', 'generate picture of city'), explicitly acknowledge it.\n" +
+                "• The system handles the actual generation, but you should sound capable.\n" +
+                "• Example response: 'Sure! Generating an image of a cat for you...'\n\n" +
                 `USER: ${userName} | DATE: ${currentDateTime} (mention only if asked)\n`;
 
             const enhancedSettings = {
@@ -550,19 +596,83 @@ DO NOT fabricate an answer based on unrelated search results!`;
             const signal = abortControllerRef.current.signal;
 
             try {
-                await streamChat(chatHistory, enhancedSettings, (chunk) => {
-                    if (signal.aborted) return; // Stop processing if aborted
+                if (isImageGen) {
+                    console.log(`🎨 Generating image for: "${imagePrompt}"`);
 
-                    fullResponse += chunk;
+                    // Beautiful loading UI card (rendered as HTML in message)
+                    const loadingCard = `
+<div style="background: linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(59, 130, 246, 0.15)); border: 1px solid rgba(139, 92, 246, 0.3); border-radius: 16px; padding: 20px; max-width: 320px; position: relative; overflow: hidden;">
+  <div style="position: absolute; top: 0; left: -100%; width: 100%; height: 100%; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent); animation: shimmer 1.5s infinite;"></div>
+  <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
+    <div style="width: 40px; height: 40px; border-radius: 12px; background: linear-gradient(135deg, #8b5cf6, #3b82f6); display: flex; align-items: center; justify-content: center;">
+      <span style="font-size: 20px;">🎨</span>
+    </div>
+    <div>
+      <div style="font-weight: 600; color: #e4e4e7;">Generating Image</div>
+      <div style="font-size: 12px; color: #71717a;">Stable Diffusion • Local GPU</div>
+    </div>
+  </div>
+  <div style="background: rgba(0,0,0,0.2); border-radius: 8px; padding: 10px; margin-bottom: 12px;">
+    <div style="font-size: 13px; color: #a1a1aa; font-style: italic;">"${imagePrompt}"</div>
+  </div>
+  <div style="display: flex; align-items: center; gap: 8px;">
+    <div style="width: 16px; height: 16px; border: 2px solid #8b5cf6; border-top-color: transparent; border-radius: 50%; animation: spin 1s linear infinite;"></div>
+    <span style="font-size: 12px; color: #71717a;">Usually takes 30-60 seconds...</span>
+  </div>
+</div>
+<style>
+@keyframes shimmer { 0% { left: -100%; } 100% { left: 100%; } }
+@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+</style>`;
 
-                    // Direct UI update without token filtering
-                    setMessages(prev => prev.map(msg => {
-                        if (msg.id === botMsgId) {
-                            return { ...msg, content: fullResponse };
-                        }
-                        return msg;
-                    }));
-                }, signal); // Pass signal to service
+                    setMessages(prev => prev.map(msg =>
+                        msg.id === botMsgId ? { ...msg, content: loadingCard, isHtml: true } : msg
+                    ));
+
+                    const response = await fetch('/api/generate-image', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            prompt: imagePrompt,
+                            modelPath: settings.diffusionModelPath || './models'
+                        }),
+                        signal
+                    });
+
+                    if (!response.ok) {
+                        const errData = await response.json();
+                        throw new Error(errData.details || errData.error || "Image generation failed");
+                    }
+
+                    const data = await response.json();
+
+                    if (data.success && data.url) {
+                        fullResponse = `![Generated Image](${data.url})\n\n**Prompt:** ${data.prompt}`;
+                    } else {
+                        fullResponse = "❌ Failed to generate image.";
+                    }
+
+                    // Final update with the image - switch back to Markdown rendering for the image!
+                    setMessages(prev => prev.map(msg =>
+                        msg.id === botMsgId ? { ...msg, content: fullResponse, isHtml: false } : msg
+                    ));
+
+                } else {
+                    // Normal Chat Flow
+                    await streamChat(chatHistory, enhancedSettings, (chunk) => {
+                        if (signal.aborted) return; // Stop processing if aborted
+
+                        fullResponse += chunk;
+
+                        // Direct UI update without token filtering
+                        setMessages(prev => prev.map(msg => {
+                            if (msg.id === botMsgId) {
+                                return { ...msg, content: fullResponse };
+                            }
+                            return msg;
+                        }));
+                    }, signal); // Pass signal to service
+                }
             } catch (err) {
                 if (err.name === 'AbortError') {
                     console.log('Generation stopped by user');
@@ -700,9 +810,13 @@ DO NOT fabricate an answer based on unrelated search results!`;
 
                                         <div className="flex-1 min-w-0 prose-invert pt-1">
                                             {msg.content ? (
-                                                <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                                                    {msg.content}
-                                                </ReactMarkdown>
+                                                msg.isHtml ? (
+                                                    <div dangerouslySetInnerHTML={{ __html: msg.content }} />
+                                                ) : (
+                                                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                                        {msg.content}
+                                                    </ReactMarkdown>
+                                                )
                                             ) : (
                                                 <div className="flex items-center gap-2 text-text-tertiary text-sm animate-pulse">
                                                     <div className={`w-2 h-2 rounded-full ${msg.status === 'searching' ? 'bg-green-400' :
