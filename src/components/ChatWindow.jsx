@@ -282,29 +282,6 @@ const ChatWindow = ({ chatId, settings, onChatCreated, onChatUpdated }) => {
             }
         }
 
-        // === SMART INTENT DETECTION (If no explicit trigger) ===
-        // If it's NOT a web search command AND NOT an explicit image command,
-        // let's ask the LLM if it LOOKS like an image request.
-        if (!isImageGen && !forceSearch && !attachment) {
-            // Only check short-ish queries to avoid huge latency on long texts
-            if (text.length < 200) {
-                try {
-                    setMessages(prev => prev.map(msg =>
-                        msg.id === botMsgId ? { ...msg, status: 'routing' } : msg
-                    ));
-
-                    const looksLikeImage = await detectImageIntent(text, settings.model);
-                    if (looksLikeImage) {
-                        console.log("🎨 Smart Intent Detected: This is an image generation request!");
-                        isImageGen = true;
-                        imagePrompt = text;
-                    }
-                } catch (err) {
-                    console.warn("Intent detection failed, proceeding as chat:", err);
-                }
-            }
-        }
-
         // Process attachments FIRST (this is fast)
         let fileAttachment = null;
         if (attachment) {
@@ -370,6 +347,30 @@ const ChatWindow = ({ chatId, settings, onChatCreated, onChatUpdated }) => {
         timerRef.current = setInterval(() => {
             setElapsedTime(Math.floor((Date.now() - startTime) / 1000));
         }, 1000);
+
+        // === SMART INTENT DETECTION (If no explicit trigger) ===
+        // If it's NOT a web search command AND NOT an explicit image command,
+        // let's ask the LLM if it LOOKS like an image request.
+        if (!isImageGen && !forceSearch && !attachment) {
+            // Only check short-ish queries to avoid huge latency on long texts
+            if (text.length < 200) {
+                try {
+                    // Update connection status
+                    setMessages(prev => prev.map(msg =>
+                        msg.id === botMsgId ? { ...msg, status: 'routing' } : msg
+                    ));
+
+                    const looksLikeImage = await detectImageIntent(text, settings.model);
+                    if (looksLikeImage) {
+                        console.log("🎨 Smart Intent Detected: This is an image generation request!");
+                        isImageGen = true;
+                        imagePrompt = text;
+                    }
+                } catch (err) {
+                    console.warn("Intent detection failed, proceeding as chat:", err);
+                }
+            }
+        }
 
         // === FORCE SEARCH for RESEARCH-CRITICAL QUERIES (bypasses conservative router) ===
         // These patterns indicate queries where hallucination is HIGH RISK - MUST verify

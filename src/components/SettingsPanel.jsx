@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Save, ChevronDown, Check, Settings, User, Globe, Cpu, Image as ImageIcon, Download, Loader2, FolderOpen, FolderInput } from 'lucide-react';
+import { X, Save, ChevronDown, Check, Settings, User, Globe, Cpu, Image as ImageIcon, Download, Loader2, FolderOpen, FolderInput, Database, RefreshCw } from 'lucide-react';
 import { getAvailableModels } from '../services/ollamaService';
 
 const SettingsPanel = ({ isOpen, onClose, onSave, initialSettings }) => {
@@ -11,6 +11,10 @@ const SettingsPanel = ({ isOpen, onClose, onSave, initialSettings }) => {
     const [downloadStatus, setDownloadStatus] = useState('');
     const dropdownRef = useRef(null);
 
+    // New State for Tabs & Refresh
+    const [activeTab, setActiveTab] = useState('general');
+    const [refreshingModels, setRefreshingModels] = useState(false);
+
     useEffect(() => {
         if (initialSettings) setSettings(initialSettings);
     }, [initialSettings]);
@@ -18,15 +22,19 @@ const SettingsPanel = ({ isOpen, onClose, onSave, initialSettings }) => {
     // Fetch available models when panel opens
     useEffect(() => {
         if (isOpen) {
-            const fetchModels = async () => {
-                setIsLoadingModels(true);
-                const models = await getAvailableModels();
-                setAvailableModels(models);
-                setIsLoadingModels(false);
-            };
-            fetchModels();
+            refreshModels();
         }
     }, [isOpen]);
+
+    // Refresh Models Function
+    const refreshModels = async () => {
+        setIsLoadingModels(true);
+        setRefreshingModels(true);
+        const models = await getAvailableModels();
+        setAvailableModels(models);
+        setRefreshingModels(false);
+        setIsLoadingModels(false);
+    };
 
     // Close dropdown when clicking outside
     useEffect(() => {
@@ -56,7 +64,7 @@ const SettingsPanel = ({ isOpen, onClose, onSave, initialSettings }) => {
     const handleDownloadModel = async () => {
         if (!settings.diffusionModelPath) return;
         setIsDownloadingModel(true);
-        setDownloadStatus('Starting download... this may take a while (~4GB)');
+        setDownloadStatus('Starting download... this may take a while (~7GB)');
 
         try {
             const res = await fetch('/api/download-model', {
@@ -66,7 +74,7 @@ const SettingsPanel = ({ isOpen, onClose, onSave, initialSettings }) => {
             });
             const data = await res.json();
             if (data.success) {
-                setDownloadStatus('Example: Success! Model Ready.');
+                setDownloadStatus('Success! Model Ready.');
                 setTimeout(() => setDownloadStatus(''), 5000);
             } else {
                 setDownloadStatus('Error: ' + (data.error || 'Unknown error'));
@@ -77,7 +85,6 @@ const SettingsPanel = ({ isOpen, onClose, onSave, initialSettings }) => {
             setIsDownloadingModel(false);
         }
     };
-
 
     const handleSelectFolder = async () => {
         try {
@@ -104,241 +111,282 @@ const SettingsPanel = ({ isOpen, onClose, onSave, initialSettings }) => {
         }
     };
 
-    const selectedModel = availableModels.find(m => m.name === settings.model);
+    const tabs = [
+        { id: 'general', label: 'General', icon: Settings },
+        { id: 'ai', label: 'AI Model', icon: Cpu },
+        { id: 'image', label: 'Image Gen', icon: ImageIcon },
+        { id: 'knowledge', label: 'Knowledge', icon: Database }
+    ];
 
     if (!isOpen) return null;
 
     return (
-        <div className="absolute inset-0 bg-black/60 backdrop-blur-xl z-50 flex items-center justify-center p-6">
-            {/* Modal Container */}
-            <div className="w-full max-w-lg bg-zinc-900/90 backdrop-blur-2xl border border-white/10 rounded-3xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-300">
-
-                {/* Header */}
-                <div className="flex items-center justify-between px-6 py-5 border-b border-white/5">
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow-lg">
-                            <Settings size={20} className="text-white" />
-                        </div>
-                        <div>
-                            <h2 className="text-lg font-semibold text-white">Settings</h2>
-                            <p className="text-xs text-zinc-500">Customize your experience</p>
-                        </div>
-                    </div>
-                    <button
-                        onClick={onClose}
-                        className="w-9 h-9 flex items-center justify-center rounded-xl bg-white/5 hover:bg-white/10 text-zinc-400 hover:text-white transition-all duration-200"
-                    >
-                        <X size={18} />
-                    </button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+            <div
+                ref={dropdownRef}
+                className="w-full max-w-4xl h-[600px] bg-[#1a1a1a]/90 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl flex overflow-hidden"
+            >
+                {/* Sidebar Navigation */}
+                <div className="w-64 bg-black/20 border-r border-white/5 p-4 flex flex-col gap-2">
+                    <h2 className="text-xl font-bold text-white mb-6 px-4">Settings</h2>
+                    {tabs.map(tab => (
+                        <button
+                            key={tab.id}
+                            onClick={() => setActiveTab(tab.id)}
+                            className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 ${activeTab === tab.id
+                                    ? 'bg-purple-600/20 text-purple-400 border border-purple-500/30 shadow-[0_0_15px_rgba(168,85,247,0.15)]'
+                                    : 'text-zinc-400 hover:bg-white/5 hover:text-white'
+                                }`}
+                        >
+                            <tab.icon size={18} />
+                            {tab.label}
+                        </button>
+                    ))}
                 </div>
 
-                {/* Content */}
-                <div className="p-6 space-y-6 max-h-[60vh] overflow-y-auto scrollbar-hide">
-
-                    {/* Model Selection */}
-                    <div className="space-y-3">
-                        <div className="flex items-center gap-2 text-xs font-semibold text-zinc-400 uppercase tracking-wider">
-                            <Cpu size={14} />
-                            <span>AI Model</span>
-                        </div>
-
-                        <div className="relative" ref={dropdownRef}>
+                {/* Content Area */}
+                <div className="flex-1 flex flex-col h-full">
+                    {/* Header */}
+                    <div className="h-16 border-b border-white/5 flex items-center justify-between px-8 bg-black/10">
+                        <h3 className="text-lg font-semibold text-white">
+                            {tabs.find(t => t.id === activeTab)?.label}
+                        </h3>
+                        <div className="flex items-center gap-3">
+                            {activeTab === 'ai' && (
+                                <button
+                                    onClick={refreshModels}
+                                    className="text-xs flex items-center gap-1.5 text-zinc-400 hover:text-white transition-colors bg-white/5 px-3 py-1.5 rounded-lg border border-white/5 hover:border-white/10"
+                                >
+                                    <RefreshCw size={12} className={refreshingModels ? 'animate-spin' : ''} />
+                                    Refresh Models
+                                </button>
+                            )}
                             <button
-                                onClick={() => setIsModelDropdownOpen(!isModelDropdownOpen)}
-                                className="w-full bg-zinc-800/50 border border-white/10 rounded-2xl px-4 py-4 text-left flex items-center justify-between hover:border-blue-500/30 hover:bg-zinc-800/70 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                                onClick={onClose}
+                                className="p-2 text-zinc-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
                             >
-                                <div className="flex items-center gap-3">
-                                    <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center">
-                                        <Cpu size={16} className="text-white" />
-                                    </div>
-                                    <div className="flex flex-col">
-                                        <span className="text-sm font-medium text-white">
-                                            {isLoadingModels ? 'Loading...' : settings.model || 'Select a model'}
-                                        </span>
-                                        {selectedModel && (
-                                            <span className="text-xs text-zinc-500">
-                                                {(selectedModel.size / 1e9).toFixed(1)} GB
-                                            </span>
-                                        )}
-                                    </div>
-                                </div>
-                                <ChevronDown
-                                    size={18}
-                                    className={`text-zinc-400 transition-transform duration-200 ${isModelDropdownOpen ? 'rotate-180' : ''}`}
-                                />
+                                <X size={20} />
                             </button>
+                        </div>
+                    </div>
 
-                            {/* Dropdown */}
-                            {isModelDropdownOpen && (
-                                <div className="absolute top-full left-0 right-0 mt-2 bg-zinc-800 border border-white/10 rounded-2xl shadow-2xl overflow-hidden z-50">
-                                    <div className="max-h-52 overflow-y-auto scrollbar-hide">
-                                        {isLoadingModels ? (
-                                            <div className="px-4 py-6 text-center text-zinc-500 text-sm">
-                                                <div className="animate-pulse">Loading models...</div>
-                                            </div>
-                                        ) : availableModels.length > 0 ? (
-                                            availableModels.map((model) => (
-                                                <button
-                                                    key={model.name}
-                                                    onClick={() => handleSelectModel(model.name)}
-                                                    className={`w-full px-4 py-3 flex items-center justify-between hover:bg-white/5 transition-colors ${settings.model === model.name ? 'bg-blue-500/10' : ''
-                                                        }`}
-                                                >
-                                                    <div className="text-left">
-                                                        <span className={`text-sm font-medium ${settings.model === model.name ? 'text-blue-400' : 'text-white'
-                                                            }`}>
-                                                            {model.name}
-                                                        </span>
-                                                        <span className="block text-xs text-zinc-500 mt-0.5">
-                                                            {(model.size / 1e9).toFixed(1)} GB
-                                                        </span>
-                                                    </div>
-                                                    {settings.model === model.name && (
-                                                        <Check size={16} className="text-blue-400" />
+                    {/* Scrollable Content */}
+                    <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
+
+                        {/* GENERAL TAB */}
+                        {activeTab === 'general' && (
+                            <div className="space-y-6 max-w-lg">
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium text-zinc-400">User Name</label>
+                                    <div className="relative">
+                                        <User className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" size={16} />
+                                        <input
+                                            type="text"
+                                            value={settings.userName || ''}
+                                            onChange={(e) => handleChange('userName', e.target.value)}
+                                            className="w-full bg-black/20 border border-white/10 rounded-xl py-2.5 pl-10 pr-4 text-white focus:outline-none focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/50 transition-all placeholder:text-zinc-700"
+                                            placeholder="What should AI call you?"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium text-zinc-400">Region</label>
+                                    <div className="relative">
+                                        <Globe className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" size={16} />
+                                        <select
+                                            value={settings.region || 'en-IN'}
+                                            onChange={(e) => handleChange('region', e.target.value)}
+                                            className="w-full bg-black/20 border border-white/10 rounded-xl py-2.5 pl-10 pr-4 text-white focus:outline-none focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/50 transition-all appearance-none cursor-pointer"
+                                        >
+                                            <option value="en-IN">🇮🇳 India</option>
+                                            <option value="en-US">🇺🇸 United States</option>
+                                            <option value="en-GB">🇬🇧 United Kingdom</option>
+                                            <option value="en-AU">🇦🇺 Australia</option>
+                                            <option value="en-CA">🇨🇦 Canada</option>
+                                            <option value="wt-wt">🌍 Global</option>
+                                        </select>
+                                        <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 pointer-events-none" size={16} />
+                                    </div>
+                                    <p className="text-xs text-zinc-600">Used for localized search results.</p>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* AI MODEL TAB */}
+                        {activeTab === 'ai' && (
+                            <div className="space-y-6 max-w-lg">
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium text-zinc-400">Deep Learning Model</label>
+                                    <div className="relative">
+                                        <button
+                                            onClick={() => setIsModelDropdownOpen(!isModelDropdownOpen)}
+                                            className="w-full flex items-center justify-between bg-black/20 border border-white/10 rounded-xl py-3 px-4 text-white hover:border-purple-500/30 transition-all group"
+                                        >
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-500/20 to-blue-500/20 flex items-center justify-center border border-white/5 group-hover:border-purple-500/20 transition-colors">
+                                                    <Cpu size={16} className="text-purple-400" />
+                                                </div>
+                                                <div className="text-left">
+                                                    <div className="text-sm font-medium">{settings.model || 'Select Model'}</div>
+                                                    {availableModels.find(m => m.name === settings.model) && (
+                                                        <div className="text-[10px] text-zinc-500">
+                                                            {(availableModels.find(m => m.name === settings.model)?.size / 1e9).toFixed(1)} GB
+                                                        </div>
                                                     )}
-                                                </button>
-                                            ))
-                                        ) : (
-                                            <div className="px-4 py-6 text-center text-zinc-500 text-sm">
-                                                No models found
+                                                </div>
+                                            </div>
+                                            <ChevronDown size={16} className={`text-zinc-500 transition-transform ${isModelDropdownOpen ? 'rotate-180' : ''}`} />
+                                        </button>
+
+                                        {isModelDropdownOpen && (
+                                            <div className="absolute top-full left-0 right-0 mt-2 bg-[#1a1a1a] border border-white/10 rounded-xl shadow-2xl overflow-hidden z-20 animate-in fade-in zoom-in-95 duration-100">
+                                                {isLoadingModels ? (
+                                                    <div className="p-4 flex items-center gap-2 text-zinc-500 text-sm justify-center">
+                                                        <Loader2 size={16} className="animate-spin" /> Fetching models...
+                                                    </div>
+                                                ) : availableModels.length > 0 ? (
+                                                    <div className="max-h-60 overflow-y-auto custom-scrollbar p-1">
+                                                        {availableModels.map((model) => (
+                                                            <button
+                                                                key={model.name}
+                                                                onClick={() => handleSelectModel(model.name)}
+                                                                className={`w-full text-left px-3 py-2.5 rounded-lg text-sm flex items-center justify-between group transition-colors ${settings.model === model.name ? 'bg-purple-500/20 text-white' : 'text-zinc-400 hover:bg-white/5 hover:text-zinc-200'
+                                                                    }`}
+                                                            >
+                                                                <span>{model.name}</span>
+                                                                {settings.model === model.name && <Check size={14} className="text-purple-400" />}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                ) : (
+                                                    <div className="p-4 text-center">
+                                                        <div className="text-zinc-500 text-sm mb-2">No models found</div>
+                                                        <a href="https://ollama.com/library" target="_blank" rel="noopener noreferrer" className="text-xs text-purple-400 hover:underline">
+                                                            Download from Ollama Library
+                                                        </a>
+                                                    </div>
+                                                )}
                                             </div>
                                         )}
                                     </div>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-
-                    {/* Divider */}
-                    <div className="border-t border-white/5" />
-
-                    {/* User Settings */}
-                    <div className="space-y-3">
-                        <div className="flex items-center gap-2 text-xs font-semibold text-zinc-400 uppercase tracking-wider">
-                            <User size={14} />
-                            <span>Profile</span>
-                        </div>
-
-                        <div className="space-y-2">
-                            <label className="text-sm text-zinc-300">Your Name</label>
-                            <input
-                                type="text"
-                                value={settings.userName || ''}
-                                onChange={(e) => handleChange('userName', e.target.value)}
-                                placeholder="Enter your name"
-                                className="w-full bg-zinc-800/50 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-transparent transition-all duration-200"
-                            />
-                            <p className="text-xs text-zinc-600">Used for personalized greetings</p>
-                        </div>
-                    </div>
-
-                    {/* Divider */}
-                    <div className="border-t border-white/5" />
-
-                    {/* Region Settings */}
-                    <div className="space-y-3">
-                        <div className="flex items-center gap-2 text-xs font-semibold text-zinc-400 uppercase tracking-wider">
-                            <Globe size={14} />
-                            <span>Region</span>
-                        </div>
-
-                        <div className="space-y-2">
-                            <label className="text-sm text-zinc-300">Location</label>
-                            <div className="relative">
-                                <select
-                                    value={settings.region || 'en-IN'}
-                                    onChange={(e) => handleChange('region', e.target.value)}
-                                    className="w-full bg-zinc-800/50 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-transparent transition-all duration-200 appearance-none cursor-pointer"
-                                >
-                                    <option value="en-IN">🇮🇳 India</option>
-                                    <option value="en-US">🇺🇸 United States</option>
-                                    <option value="en-GB">🇬🇧 United Kingdom</option>
-                                    <option value="en-AU">🇦🇺 Australia</option>
-                                    <option value="en-CA">🇨🇦 Canada</option>
-                                    <option value="wt-wt">🌍 Global</option>
-                                </select>
-                                <div className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-zinc-400">
-                                    <ChevronDown size={16} />
+                                    <p className="text-xs text-zinc-600 pl-1">
+                                        Ensuring Ollama is running on port 11434.
+                                    </p>
                                 </div>
                             </div>
-                            <p className="text-xs text-zinc-600">Sets local time & news preference</p>
-                        </div>
-                    </div>
+                        )}
 
-                    {/* Divider */}
-                    <div className="border-t border-white/5" />
+                        {/* IMAGE GEN TAB */}
+                        {activeTab === 'image' && (
+                            <div className="space-y-6 max-w-lg">
+                                <div className="space-y-4">
+                                    <div className="p-4 rounded-xl bg-gradient-to-br from-purple-500/10 to-blue-500/10 border border-purple-500/20">
+                                        <div className="flex items-center gap-3 mb-2">
+                                            <div className="p-2 rounded-lg bg-purple-500/20 text-purple-400">
+                                                <ImageIcon size={20} />
+                                            </div>
+                                            <div>
+                                                <h4 className="text-white font-medium text-sm">Local Image Support</h4>
+                                                <p className="text-xs text-purple-300/70">Powered by SDXL Turbo / Flux</p>
+                                            </div>
+                                        </div>
+                                    </div>
 
-                    {/* Image Generation Settings */}
-                    <div className="space-y-3">
-                        <div className="flex items-center gap-2 text-xs font-semibold text-zinc-400 uppercase tracking-wider">
-                            <ImageIcon size={14} />
-                            <span>Image Generation (Local)</span>
-                        </div>
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-medium text-zinc-400">Model Storage Path</label>
+                                        <div className="flex gap-2">
+                                            <div className="relative flex-1">
+                                                <FolderInput className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" size={16} />
+                                                <input
+                                                    type="text"
+                                                    value={settings.diffusionModelPath}
+                                                    onChange={(e) => handleChange('diffusionModelPath', e.target.value)}
+                                                    className="w-full bg-black/20 border border-white/10 rounded-xl py-2.5 pl-10 pr-4 text-white text-sm focus:outline-none focus:border-purple-500/50"
+                                                    placeholder="./models"
+                                                />
+                                            </div>
+                                            <button
+                                                onClick={handleSelectFolder}
+                                                className="p-2.5 bg-white/5 border border-white/10 rounded-xl text-zinc-400 hover:text-white hover:bg-white/10 transition-colors"
+                                                title="Select Folder"
+                                            >
+                                                <FolderOpen size={18} />
+                                            </button>
+                                        </div>
+                                    </div>
 
-                        <div className="space-y-2">
-                            <label className="text-sm text-zinc-300">Model Path</label>
-                            <div className="flex gap-2">
-                                <button
-                                    onClick={handleSelectFolder}
-                                    title="Choose folder..."
-                                    className="bg-zinc-700/50 hover:bg-zinc-700 border border-white/10 rounded-xl px-3 flex items-center justify-center text-zinc-400 hover:text-white transition-colors"
-                                >
-                                    <FolderInput size={18} />
-                                </button>
-                                <input
-                                    type="text"
-                                    value={settings.diffusionModelPath || './models'}
-                                    onChange={(e) => handleChange('diffusionModelPath', e.target.value)}
-                                    placeholder="./models"
-                                    className="flex-1 bg-zinc-800/50 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
-                                />
-                                <button
-                                    onClick={handleOpenFolder}
-                                    title="Open content in Finder"
-                                    disabled={!settings.diffusionModelPath}
-                                    className="bg-zinc-700/50 hover:bg-zinc-700 border border-white/10 rounded-xl px-3 flex items-center justify-center text-zinc-400 hover:text-white transition-colors disabled:opacity-50"
-                                >
-                                    <FolderOpen size={18} />
-                                </button>
-                                <button
-                                    onClick={handleDownloadModel}
-                                    disabled={isDownloadingModel}
-                                    className="bg-purple-600/20 hover:bg-purple-600/40 text-purple-400 border border-purple-500/30 rounded-xl px-4 flex items-center justify-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                    title="Download Stable Diffusion v1.5 to this path"
-                                >
-                                    {isDownloadingModel ? <Loader2 size={18} className="animate-spin" /> : <Download size={18} />}
-                                </button>
+                                    <div className="flex gap-3">
+                                        <button
+                                            onClick={handleOpenFolder}
+                                            className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border border-white/10 bg-white/5 text-zinc-300 text-sm font-medium hover:bg-white/10 transition-all"
+                                        >
+                                            <FolderOpen size={16} />
+                                            Open Folder
+                                        </button>
+                                        <button
+                                            onClick={handleDownloadModel}
+                                            disabled={isDownloadingModel}
+                                            className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border border-transparent text-sm font-medium transition-all ${isDownloadingModel
+                                                    ? 'bg-purple-500/20 text-purple-400 cursor-not-allowed'
+                                                    : 'bg-purple-600 hover:bg-purple-500 text-white shadow-lg shadow-purple-900/20'
+                                                }`}
+                                        >
+                                            {isDownloadingModel ? (
+                                                <><Loader2 size={16} className="animate-spin" /> Downloading...</>
+                                            ) : (
+                                                <><Download size={16} /> Download Model</>
+                                            )}
+                                        </button>
+                                    </div>
+
+                                    {downloadStatus && (
+                                        <div className="p-3 bg-black/20 rounded-lg border border-white/5">
+                                            <p className="text-xs text-zinc-400 font-mono break-all">
+                                                {downloadStatus}
+                                            </p>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
-                            {downloadStatus && (
-                                <p className={`text-xs ${downloadStatus.includes('Error') ? 'text-red-400' : 'text-green-400'} animate-pulse`}>
-                                    {downloadStatus}
-                                </p>
-                            )}
-                            <p className="text-xs text-zinc-600">Folder where Stable Diffusion weights are stored.</p>
-                        </div>
+                        )}
+
+                        {/* KNOWLEDGE TAB */}
+                        {activeTab === 'knowledge' && (
+                            <div className="space-y-6 max-w-lg">
+                                <div className="p-4 rounded-xl bg-black/20 border border-white/10 flex flex-col items-center justify-center text-center py-12">
+                                    <div className="w-12 h-12 rounded-full bg-zinc-800/50 flex items-center justify-center mb-3 text-zinc-500">
+                                        <Database size={24} />
+                                    </div>
+                                    <h4 className="text-zinc-300 font-medium mb-1">Knowledge Base</h4>
+                                    <p className="text-xs text-zinc-500 max-w-xs">
+                                        Manage your learned facts and RAG documents here.
+                                    </p>
+                                    <button className="mt-4 px-4 py-2 bg-white/5 text-zinc-400 text-xs rounded-lg border border-white/10 hover:text-white hover:bg-white/10 transition-colors">
+                                        View Stored Facts
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
                     </div>
 
-                </div>
-
-                {/* Footer */}
-                <div className="px-6 py-5 border-t border-white/5 bg-zinc-900/50">
-                    <div className="flex gap-3">
+                    {/* Footer */}
+                    <div className="p-6 border-t border-white/5 flex justify-end gap-3 bg-black/10">
                         <button
                             onClick={onClose}
-                            className="flex-1 py-3 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-medium transition-all duration-200"
+                            className="px-5 py-2.5 rounded-xl border border-white/10 text-zinc-400 text-sm font-medium hover:text-white hover:bg-white/5 transition-colors"
                         >
                             Cancel
                         </button>
                         <button
                             onClick={handleSave}
-                            className="flex-1 py-3 rounded-xl bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-semibold flex items-center justify-center gap-2 shadow-lg shadow-blue-500/25 transition-all duration-200 active:scale-[0.98]"
+                            className="px-5 py-2.5 rounded-xl bg-white text-black text-sm font-bold hover:bg-zinc-200 transition-colors shadow-[0_0_20px_rgba(255,255,255,0.1)]"
                         >
-                            <Save size={18} />
-                            Save
+                            Save Changes
                         </button>
                     </div>
                 </div>
-
             </div>
         </div>
     );

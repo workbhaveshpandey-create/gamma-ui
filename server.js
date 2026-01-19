@@ -15,7 +15,7 @@ const PORT = 3001;
 app.use(cors());
 app.use(express.json());
 
-// Proxy for Ollama
+// Proxy for Ollama Chat
 app.post('/ollama/api/chat', async (req, res) => {
     try {
         const response = await axios.post('http://localhost:11434/api/chat', req.body, {
@@ -25,6 +25,17 @@ app.post('/ollama/api/chat', async (req, res) => {
     } catch (error) {
         console.error('Ollama Proxy Error:', error.message);
         res.status(500).json({ error: 'Failed to connect to Ollama' });
+    }
+});
+
+// Proxy for Ollama Tags (Model List)
+app.get('/ollama/api/tags', async (req, res) => {
+    try {
+        const response = await axios.get('http://localhost:11434/api/tags');
+        res.json(response.data);
+    } catch (error) {
+        console.error('Ollama Tags Proxy Error:', error.message);
+        res.status(500).json({ error: 'Failed to fetch models from Ollama' });
     }
 });
 
