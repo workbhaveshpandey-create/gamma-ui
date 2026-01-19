@@ -199,25 +199,13 @@ export const shouldSearchWeb = async (userMessage, model = 'gemma3:12b') => {
         messages: [
             {
                 role: 'system',
-                content: `You are a router that decides if a question needs web verification.
+                content: `You are a helper that decides if a user question needs live web search.
+                
+Rules:
+- Say YES for: news, stocks, weather, sports scores, recent events (2024+), specific unknown entities.
+- Say NO for: math, code, translations, greetings, general knowledge, physics, history (before 2023).
 
-Say YES ONLY if the question:
-- Asks about CURRENT events from late 2024, 2025, or 2026
-- Asks for LIVE data (Weather, Stocks, Crypto, Prices, Sports Scores)
-- Asks about Bitcoin, Ethereum, or financial market specific values
-- Asks for very specific, obscure facts or recent scientific papers
-- You are strictly UNCERTAIN (less than 50% confident)
-
-Say NO (use internal knowledge) if the question:
-- Is General Knowledge (History, Science, Geography)
-- Is about Coding, Math, or Logic
-- Is Creative Writing or Brainstorming
-- Is Opinions, Advice, or Chat
-- Is a Definition or Explanation
-
-CRITICAL: Web search is SLOW. Prefer NO unless absolutely necessary for accuracy on recent/live topics.
-
-RESPOND WITH ONLY: YES or NO`
+Reply with ONLY: YES or NO`
             },
             {
                 role: 'user',
@@ -232,7 +220,7 @@ RESPOND WITH ONLY: YES or NO`
     };
 
     try {
-        const response = await fetch(`${OLLAMA_BASE_URL}/chat`, {
+        const response = await fetch(`${OLLAMA_BASE_URL} / chat`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)

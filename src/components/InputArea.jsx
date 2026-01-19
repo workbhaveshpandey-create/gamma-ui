@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Send, Image, Mic, Paperclip, ArrowUp, Camera, X, StopCircle, Loader2 } from 'lucide-react';
+import { Send, Image, Mic, Paperclip, ArrowUp, Camera, X, StopCircle, Loader2, Plus } from 'lucide-react';
 import { extractPdfText } from '../services/pdfService';
 import { transcribeAudio } from '../services/whisperService';
 import CameraModal from './CameraModal';
@@ -291,6 +291,8 @@ const InputArea = ({ onSendMessage, disabled, isLoading, onStopGeneration }) => 
         recognition.start();
     };
 
+    const [showAttachMenu, setShowAttachMenu] = useState(false);
+
     return (
         <div className="w-full relative">
             <CameraModal
@@ -307,125 +309,141 @@ const InputArea = ({ onSendMessage, disabled, isLoading, onStopGeneration }) => 
                 className="hidden"
             />
 
-            <form onSubmit={handleSubmit} className="relative flex flex-col w-full p-3 bg-surface border border-subtle rounded-[26px] shadow-sm transition-colors focus-within:border-zinc-600 focus-within:bg-[#252627]">
-
-                {/* Transcription Loading State */}
-                {isTranscribing && (
-                    <div className="px-3 pt-2 pb-1">
-                        <div className="flex items-center gap-3 p-3 bg-purple-500/10 border border-purple-500/30 rounded-lg">
-                            <Loader2 size={18} className="text-purple-400 animate-spin" />
-                            <div className="flex flex-col">
-                                <span className="text-sm text-purple-300">Transcribing audio...</span>
-                                <span className="text-xs text-purple-400">{transcriptionProgress}</span>
+            {/* Attachment Preview - Above the bar */}
+            {attachment && !isTranscribing && (
+                <div className="mb-3 animate-slide-up">
+                    <div className="relative inline-block group">
+                        {attachment.type === 'image' ? (
+                            <img src={attachment.url} alt="preview" className="h-20 w-auto rounded-xl border border-white/10 object-cover shadow-lg" />
+                        ) : attachment.type === 'audio' ? (
+                            <div className="h-12 px-4 flex items-center bg-zinc-800/80 rounded-xl border border-white/10 text-sm text-white shadow-lg">
+                                <span className="text-purple-400 mr-2">🎵</span>
+                                <span className="truncate max-w-[200px]">{attachment.name}</span>
+                                {attachment.transcribed && (
+                                    <span className="ml-2 text-green-400 text-xs">✓ Transcribed</span>
+                                )}
                             </div>
+                        ) : (
+                            <div className="h-12 px-4 flex items-center bg-zinc-800/80 rounded-xl border border-white/10 text-sm text-white shadow-lg">
+                                <Paperclip size={16} className="mr-2 shrink-0 text-white/60" />
+                                <span className="truncate max-w-[200px]">{attachment.name}</span>
+                                {attachment.type === 'text' && (
+                                    <span className="ml-2 text-green-400 text-xs">✓ Ready</span>
+                                )}
+                            </div>
+                        )}
+                        <button
+                            type="button"
+                            onClick={() => setAttachment(null)}
+                            className="absolute -top-2 -right-2 bg-zinc-600 text-white rounded-full p-1.5 shadow-lg hover:bg-zinc-500 transition-all hover:scale-110"
+                        >
+                            <X size={12} />
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* Transcription Loading State */}
+            {isTranscribing && (
+                <div className="mb-3">
+                    <div className="flex items-center gap-3 px-4 py-3 bg-purple-500/10 border border-purple-500/30 rounded-xl animate-fade-in">
+                        <Loader2 size={18} className="text-purple-400 animate-spin" />
+                        <div className="flex flex-col">
+                            <span className="text-sm text-purple-300">Transcribing audio...</span>
+                            <span className="text-xs text-purple-400">{transcriptionProgress}</span>
                         </div>
                     </div>
-                )}
+                </div>
+            )}
 
-                {/* Attachment Preview */}
-                {attachment && !isTranscribing && (
-                    <div className="px-3 pt-2 pb-1">
-                        <div className="relative inline-block group">
-                            {attachment.type === 'image' ? (
-                                <img src={attachment.url} alt="preview" className="h-16 w-auto rounded-lg border border-subtle object-cover" />
-                            ) : attachment.type === 'audio' ? (
-                                <div className="h-12 px-3 flex items-center bg-zinc-800 rounded-lg border border-subtle text-xs text-zinc-300">
-                                    <span className="text-purple-400 mr-2">🎵</span>
-                                    <span className="truncate max-w-[200px]">{attachment.name}</span>
-                                    {attachment.transcribed && (
-                                        <span className="ml-2 text-green-500 text-[10px]">✓ Transcribed</span>
-                                    )}
-                                </div>
-                            ) : (
-                                <div className="h-12 px-3 flex items-center bg-zinc-800 rounded-lg border border-subtle text-xs text-zinc-300">
-                                    <Paperclip size={14} className="mr-2 shrink-0" />
-                                    <span className="truncate max-w-[200px]">{attachment.name}</span>
-                                    {attachment.type === 'text' && (
-                                        <span className="ml-2 text-green-500 text-[10px]">✓ Ready</span>
-                                    )}
-                                </div>
-                            )}
+            {/* Main Input Bar - ChatGPT Style */}
+            <form onSubmit={handleSubmit} className="relative flex items-center w-full px-2 py-2 rounded-full transition-all duration-300 bg-[#2a2b2d] border border-white/10 shadow-lg hover:border-white/15 focus-within:border-white/25">
+
+                {/* Left: "+" Button with Popover */}
+                <div className="relative">
+                    <button
+                        type="button"
+                        onClick={() => setShowAttachMenu(!showAttachMenu)}
+                        className="w-10 h-10 rounded-full flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 transition-all active:scale-90"
+                        title="Attach"
+                        disabled={isLoading}
+                    >
+                        <Plus size={22} strokeWidth={2} className={`transition-transform duration-200 ${showAttachMenu ? 'rotate-45' : ''}`} />
+                    </button>
+
+                    {/* Popover Menu */}
+                    {showAttachMenu && (
+                        <div className="absolute bottom-full left-0 mb-2 bg-[#2a2b2d] border border-white/15 rounded-2xl shadow-2xl p-2 min-w-[160px] animate-fade-in z-50">
                             <button
                                 type="button"
-                                onClick={() => setAttachment(null)}
-                                className="absolute -top-2 -right-2 bg-zinc-700 text-white rounded-full p-1 shadow-md hover:bg-zinc-600 transition-colors"
+                                onClick={() => {
+                                    fileInputRef.current?.click();
+                                    setShowAttachMenu(false);
+                                }}
+                                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-white/80 hover:text-white hover:bg-white/10 transition-all text-sm"
                             >
-                                <X size={10} />
+                                <Paperclip size={18} />
+                                <span>Upload File</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setCameraOpen(true);
+                                    setShowAttachMenu(false);
+                                }}
+                                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-white/80 hover:text-white hover:bg-white/10 transition-all text-sm"
+                            >
+                                <Camera size={18} />
+                                <span>Use Camera</span>
                             </button>
                         </div>
-                    </div>
-                )}
+                    )}
+                </div>
 
+                {/* Center: Text Input */}
                 <textarea
                     ref={textareaRef}
                     value={input}
                     onChange={handleChange}
                     onKeyDown={handleKeyDown}
-                    placeholder="Message Kreo..."
+                    placeholder="Ask anything"
                     rows={1}
                     disabled={disabled}
-                    className="w-full bg-transparent text-text-primary text-[16px] placeholder:text-text-tertiary px-2 py-2 focus:outline-none resize-none max-h-[200px] overflow-y-auto scrollbar-hide font-sans leading-relaxed"
+                    className="flex-1 bg-transparent text-white text-[16px] placeholder:text-white/40 px-3 py-2 focus:outline-none resize-none max-h-[120px] overflow-y-auto scrollbar-hide font-sans leading-relaxed"
                     style={{ minHeight: '24px' }}
+                    onFocus={() => setShowAttachMenu(false)}
                 />
 
-                <div className="flex items-center justify-between mt-2 pl-1 pr-1">
-                    <div className="flex items-center gap-1">
+                {/* Right: Mic + Send */}
+                <div className="flex items-center gap-1 mr-1">
+                    <button
+                        type="button"
+                        onClick={toggleRecording}
+                        className={`w-10 h-10 rounded-full flex items-center justify-center transition-all active:scale-90 ${isRecording ? 'text-red-400 bg-red-400/20 animate-pulse' : 'text-white/60 hover:text-white hover:bg-white/10'}`}
+                        title={isRecording ? "Stop Recording" : "Use Voice"}
+                        disabled={isLoading}
+                    >
+                        {isRecording ? <StopCircle size={20} /> : <Mic size={20} />}
+                    </button>
+
+                    {isLoading ? (
                         <button
                             type="button"
-                            onClick={() => fileInputRef.current?.click()}
-                            className="p-2 text-text-tertiary hover:text-text-primary hover:bg-white/5 rounded-full transition-colors"
-                            title="Attach file"
-                            disabled={isLoading}
+                            onClick={onStopGeneration}
+                            className="w-10 h-10 rounded-full flex items-center justify-center bg-white text-black hover:bg-zinc-200 transition-all active:scale-90"
+                            title="Stop generation"
                         >
-                            <Paperclip size={20} strokeWidth={1.5} />
+                            <div className="w-3.5 h-3.5 bg-black rounded-sm" />
                         </button>
-
+                    ) : (
                         <button
-                            type="button"
-                            onClick={() => setCameraOpen(true)}
-                            className="p-2 text-text-tertiary hover:text-text-primary hover:bg-white/5 rounded-full transition-colors"
-                            title="Use Camera"
-                            disabled={isLoading}
+                            type="submit"
+                            disabled={(!input.trim() && !attachment)}
+                            className={`w-10 h-10 rounded-full flex items-center justify-center transition-all active:scale-90 ${(input.trim() || attachment) ? 'bg-white text-black hover:bg-zinc-200' : 'bg-white/10 text-white/30 cursor-not-allowed'}`}
                         >
-                            <Camera size={20} strokeWidth={1.5} />
+                            <ArrowUp size={20} strokeWidth={2.5} />
                         </button>
-
-                        <button
-                            type="button"
-                            onClick={toggleRecording}
-                            className={`p-2 rounded-full transition-colors ${isRecording ? 'text-red-400 bg-red-400/10' : isLoading ? 'opacity-50 cursor-not-allowed text-text-tertiary' : 'text-text-tertiary hover:text-text-primary hover:bg-white/5'}`}
-                            title={isRecording ? "Stop Recording" : "Use Voice"}
-                            disabled={isLoading}
-                        >
-                            {isRecording ? <StopCircle size={20} strokeWidth={1.5} /> : <Mic size={20} strokeWidth={1.5} />}
-                        </button>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                        {isLoading ? (
-                            <button
-                                type="button"
-                                onClick={onStopGeneration}
-                                className="w-8 h-8 rounded-full flex items-center justify-center transition-all duration-200 bg-white text-black hover:bg-zinc-200"
-                                title="Stop generation"
-                            >
-                                <div className="w-3 h-3 bg-black rounded-[2px]" />
-                            </button>
-                        ) : (
-                            <button
-                                type="submit"
-                                disabled={(!input.trim() && !attachment)}
-                                className={`
-                                    w-8 h-8 rounded-full flex items-center justify-center transition-all duration-200
-                                    ${(input.trim() || attachment)
-                                        ? 'bg-white text-black hover:bg-zinc-200'
-                                        : 'bg-zinc-700 text-zinc-500 cursor-not-allowed'}
-                                `}
-                            >
-                                <ArrowUp size={18} strokeWidth={2.5} />
-                            </button>
-                        )}
-                    </div>
+                    )}
                 </div>
             </form>
         </div>

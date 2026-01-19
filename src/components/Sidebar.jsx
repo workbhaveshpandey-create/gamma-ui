@@ -7,21 +7,21 @@ const Sidebar = ({ currentChatId, onSelectChat, onNewChat, onDeleteChat, isOpen,
     return (
         <aside
             className={`
-                h-full flex flex-col bg-sidebar transition-[width] duration-300 ease-out relative shrink-0 z-50
-                ${isOpen ? 'w-[300px]' : 'w-[72px]'}
+                h-full flex flex-col glass-panel transition-[width] duration-400 ease-[cubic-bezier(0.34,1.56,0.64,1)] relative shrink-0 z-50
+                ${isOpen ? 'w-[280px]' : 'w-[72px]'}
             `}
         >
             {/* Toggle + Header */}
             <div className={`p-4 flex items-center ${isOpen ? 'justify-between' : 'justify-center flex-col gap-4'}`}>
                 {isOpen ? (
                     <>
-                        <div className="flex items-center gap-3">
-                            <img src="/kreo-icon.png" alt="Kreo" className="w-8 h-8 rounded-full object-cover" />
+                        <div className="flex items-center gap-3 animate-fade-in">
+                            <img src="/kreo-icon.png" alt="Kreo" className="w-8 h-8 rounded-full object-cover shadow-sm" />
                             <span className="text-lg font-medium text-text-primary tracking-tight">Kreo</span>
                         </div>
                         <button
                             onClick={onToggle}
-                            className="p-2 rounded-full text-text-secondary hover:bg-surface-hover transition-colors"
+                            className="p-2 rounded-full text-text-secondary hover:bg-surface-hover hover:text-text-primary transition-all duration-200 active:scale-90"
                             title="Collapse sidebar"
                         >
                             <PanelLeft size={20} />
@@ -30,7 +30,7 @@ const Sidebar = ({ currentChatId, onSelectChat, onNewChat, onDeleteChat, isOpen,
                 ) : (
                     <button
                         onClick={onToggle}
-                        className="p-2 rounded-full text-text-secondary hover:bg-surface-hover transition-colors mb-2"
+                        className="p-2 rounded-full text-text-secondary hover:bg-surface-hover hover:text-text-primary transition-all duration-200 active:scale-90 mb-2"
                         title="Expand sidebar"
                     >
                         <PanelLeft size={20} />
@@ -43,23 +43,23 @@ const Sidebar = ({ currentChatId, onSelectChat, onNewChat, onDeleteChat, isOpen,
                 <button
                     onClick={onNewChat}
                     className={`
-                        flex items-center gap-3 bg-surface hover:bg-surface-hover w-full py-3 rounded-full transition-all duration-200 group text-sm text-text-primary
+                        flex items-center gap-3 bg-surface hover:bg-surface-hover w-full py-3 rounded-full transition-all duration-200 active:scale-95 group text-sm text-text-primary border border-transparent hover:border-white/5 shadow-sm
                         ${isOpen ? 'px-4 justify-start' : 'justify-center px-0 w-10 h-10 mx-auto'}
                     `}
                     title="New Chat"
                 >
-                    <Plus size={20} className="shrink-0 text-text-secondary group-hover:text-text-primary" />
-                    {isOpen && <span className="font-medium text-text-secondary group-hover:text-text-primary">New chat</span>}
+                    <Plus size={20} className="shrink-0 text-text-secondary group-hover:text-text-primary transition-colors" />
+                    {isOpen && <span className="font-medium text-text-secondary group-hover:text-text-primary whitespace-nowrap overflow-hidden animate-fade-in">New chat</span>}
                 </button>
             </div>
 
             {/* Scrollable Chat History */}
-            <div className="flex-1 overflow-y-auto px-4 py-2 space-y-6">
+            <div className="flex-1 overflow-y-auto px-3 py-2 space-y-6 scrollbar-thin scrollbar-thumb-zinc-800 scrollbar-track-transparent">
                 {isOpen && hasChats ? (
                     Object.entries(chatHistory).map(([groupName, chats]) => (
                         chats.length > 0 && (
-                            <div key={groupName}>
-                                <div className="text-xs font-medium text-text-tertiary px-3 mb-2 uppercase tracking-wider">
+                            <div key={groupName} className="animate-fade-in">
+                                <div className="text-xs font-medium text-text-tertiary px-4 mb-2 uppercase tracking-wider opacity-80">
                                     {groupName}
                                 </div>
                                 <div className="space-y-1">
@@ -67,15 +67,15 @@ const Sidebar = ({ currentChatId, onSelectChat, onNewChat, onDeleteChat, isOpen,
                                         <div
                                             key={chat.id}
                                             className={`
-                                                group flex items-center w-full px-3 py-2 rounded-full text-left text-sm transition-colors cursor-pointer min-w-0
+                                                group flex items-center w-full px-3 py-2 rounded-lg text-left text-sm transition-all duration-200 cursor-pointer min-w-0 active:scale-[0.98]
                                                 ${currentChatId === chat.id
-                                                    ? 'bg-blue-500/20 text-text-primary font-medium'
-                                                    : 'text-text-secondary hover:bg-surface-hover'
+                                                    ? 'bg-blue-500/10 text-blue-100 font-medium'
+                                                    : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
                                                 }
                                             `}
                                             onClick={() => onSelectChat(chat.id)}
                                         >
-                                            <span className="truncate flex-1 py-0.5">{chat.title || 'Untitled Chat'}</span>
+                                            <span className="truncate flex-1">{chat.title || 'Untitled Chat'}</span>
 
                                             {/* Hover Delete - Only show on hover/active */}
                                             <button
@@ -84,12 +84,12 @@ const Sidebar = ({ currentChatId, onSelectChat, onNewChat, onDeleteChat, isOpen,
                                                     onDeleteChat(chat.id);
                                                 }}
                                                 className={`
-                                                    p-1 text-text-tertiary hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100
+                                                    p-1 text-text-tertiary hover:text-red-400 transition-all duration-200 opacity-0 group-hover:opacity-100 hover:bg-red-500/10 rounded
                                                     ${currentChatId === chat.id ? 'opacity-0' : ''} 
                                                 `}
                                                 title="Delete chat"
                                             >
-                                                <Trash2 size={14} />
+                                                <Trash2 size={13} />
                                             </button>
                                         </div>
                                     ))}
@@ -100,7 +100,7 @@ const Sidebar = ({ currentChatId, onSelectChat, onNewChat, onDeleteChat, isOpen,
                 ) : (
                     /* Empty State for minimal mode or no chats */
                     !hasChats && isOpen && (
-                        <div className="text-center text-text-tertiary text-sm mt-12">
+                        <div className="text-center text-text-tertiary text-sm mt-12 animate-fade-in">
                             No recent chats
                         </div>
                     )
@@ -108,17 +108,17 @@ const Sidebar = ({ currentChatId, onSelectChat, onNewChat, onDeleteChat, isOpen,
             </div>
 
             {/* Footer with Settings */}
-            <div className={`p-4 mt-auto border-t border-white/5 ${isOpen ? '' : 'flex justify-center'}`}>
+            <div className={`p-3 mt-auto border-t border-white/5 ${isOpen ? '' : 'flex justify-center'}`}>
                 <button
                     onClick={onOpenSettings}
                     className={`
-                        flex items-center gap-3 text-text-secondary hover:text-text-primary hover:bg-surface-hover rounded-lg transition-colors
-                        ${isOpen ? 'px-3 py-2 w-full' : 'p-2'}
+                        flex items-center gap-3 text-text-secondary hover:text-text-primary hover:bg-surface-hover rounded-lg transition-all duration-200 active:scale-95
+                        ${isOpen ? 'px-3 py-2.5 w-full' : 'p-2 justify-center'}
                     `}
                     title="Settings"
                 >
                     <Settings size={20} />
-                    {isOpen && <span className="text-sm">Settings</span>}
+                    {isOpen && <span className="text-sm font-medium animate-fade-in">Settings</span>}
                 </button>
             </div>
         </aside>

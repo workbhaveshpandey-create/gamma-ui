@@ -615,29 +615,19 @@ DO NOT fabricate an answer based on unrelated search results!`;
 
     return (
         <div className="flex flex-col h-full bg-app relative">
-            {/* Clean Header - Model Name only */}
-            <div className="h-16 flex items-center px-6 bg-app/80 backdrop-blur-md sticky top-0 z-20 border-b border-white/5">
-                <div className="flex items-center gap-3">
-                    <span className="text-lg font-medium text-text-primary">Kreo</span>
-                    <span className="text-sm text-text-tertiary bg-white/5 px-2 py-0.5 rounded">
-                        {settings.model || 'gemma3:12b'}
-                    </span>
-                </div>
-            </div>
-
             {/* Messages */}
-            <div className="flex-1 overflow-y-auto px-4 py-8 scrollbar-hide">
-                <div className="max-w-3xl mx-auto space-y-12">
+            <div className="flex-1 overflow-y-auto px-8 pt-6 pb-32 scrollbar-hide">
+                <div className="w-full space-y-6">
                     {messages.map((msg, idx) => (
                         <div
                             key={msg.id}
                             className={`flex w-full ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
                         >
                             <div className={`
-                                max-w-[90%] 
+                                max-w-[85%] 
                                 ${msg.role === 'user'
-                                    ? 'bg-surface px-5 py-3 rounded-3xl rounded-br-md text-text-primary'
-                                    : 'pl-0 pr-4'
+                                    ? 'bg-blue-600/90 px-5 py-3 rounded-2xl rounded-br-sm text-white shadow-md'
+                                    : ''
                                 }
                             `}>
                                 {msg.role === 'user' ? (
@@ -764,9 +754,9 @@ DO NOT fabricate an answer based on unrelated search results!`;
                 </div>
             )}
 
-            {/* Input Floating Footer */}
-            <div className="p-6 pt-2 bg-gradient-to-t from-app via-app to-transparent z-20">
-                <div className="max-w-3xl mx-auto">
+            {/* Input Floating Footer - Sticky at Bottom */}
+            <div className="sticky bottom-0 w-full p-4 pb-6 bg-gradient-to-t from-app via-app/95 to-transparent z-20">
+                <div className="max-w-5xl mx-auto">
                     <InputArea
                         onSendMessage={handleSendMessage}
                         disabled={isLoading}

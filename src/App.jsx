@@ -23,6 +23,7 @@ function App() {
     seed: 42,
     systemPrompt: 'You are a helpful AI assistant.',
     userName: 'User',
+    region: 'en-IN',
   };
 
   const [appSettings, setAppSettings] = useState(() => {
